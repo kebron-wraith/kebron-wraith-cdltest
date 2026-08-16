@@ -1,6 +1,6 @@
 // CDL — modules/dashboards_pm.js
 // Project Manager: Their assigned site(s) only. Spec: site-scoped, with daily popup.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SITES, LOGO_URL } from "../config.js";
+import { supabase, SITES, LOGO_URL } from "../config.js";
 import { initAIChat } from "./ai_chat.js";
 
 export async function renderPMDashboard(container, user) {
@@ -39,14 +39,14 @@ export async function renderPMDashboard(container, user) {
       </div>
     </div>`;
 
-  const [requests, stock, grns] = await Promise.all([
-    fetch(`${SUPABASE_URL}/rest/v1/material_requests?status=eq.pending&${siteParam}&order=created_at.desc&limit=20`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
-    fetch(`${SUPABASE_URL}/rest/v1/stock?${siteParam}&limit=200`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
-    fetch(`${SUPABASE_URL}/rest/v1/grns?status=eq.pending&${siteParam}&select=id&limit=20`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
+  const [reqRes, stockRes, grnRes] = await Promise.all([
+    supabase.from("material_requests").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(20),
+    supabase.from("stock").select("*").limit(200),
+    supabase.from("grns").select("id").eq("status", "pending").limit(20),
   ]);
+  const requests = reqRes.data || [];
+  const stock = stockRes.data || [];
+  const grns = grnRes.data || [];
 
   const low = stock.filter(i=>(i.quantity||0)<10&&(i.quantity||0)>0).length;
   const siteVal = stock.reduce((s,i)=>s+((i.quantity||0)*(i.unit_price||0)),0);

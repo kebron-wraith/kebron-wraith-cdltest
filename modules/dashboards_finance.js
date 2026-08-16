@@ -1,6 +1,6 @@
 // CDL — modules/dashboards_finance.js
 // Finance: Budget vs actual, spend trends, NO inventory edit buttons.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SITES, LOGO_URL } from "../config.js";
+import { supabase, SITES, LOGO_URL } from "../config.js";
 import { initAIChat } from "./ai_chat.js";
 
 export async function renderFinanceDashboard(container, user) {
@@ -34,14 +34,14 @@ export async function renderFinanceDashboard(container, user) {
       <div id="fin-procurement" style="overflow-x:auto;"></div>
     </div>`;
 
-  const [stock, procurement, incidents] = await Promise.all([
-    fetch(`${SUPABASE_URL}/rest/v1/stock?select=site_id,quantity,unit_price&limit=500`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
-    fetch(`${SUPABASE_URL}/rest/v1/procurement?select=*&order=created_at.desc&limit=100`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
-    fetch(`${SUPABASE_URL}/rest/v1/incidents?select=estimated_value,type&limit=100`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
+  const [stockRes, procurementRes, incidentsRes] = await Promise.all([
+    supabase.from("stock").select("site_id,quantity,unit_price").limit(500),
+    supabase.from("procurement").select("*").order("created_at.desc").limit(100),
+    supabase.from("incidents").select("estimated_value,type").limit(100),
   ]);
+  const stock = stockRes.data || [];
+  const procurement = procurementRes.data || [];
+  const incidents = incidentsRes.data || [];
 
   const totalVal = stock.reduce((s,i)=>s+((i.quantity||0)*(i.unit_price||0)),0);
   const procTotal = procurement.reduce((s,p)=>s+(p.total_amount||0),0);

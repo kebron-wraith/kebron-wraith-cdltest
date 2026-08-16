@@ -4,7 +4,7 @@
 // Each storekeeper type (local/imported/scaffolding) sees ONLY their data.
 // ============================================================
 
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SITES } from "../config.js";
+import { supabase, SITES } from "../config.js";
 import { logAudit } from "./audit_core.js";
 import { showToast, showModal, closeModal } from "../app.js";
 import { findMaterial, UNITS } from "../data.js";
@@ -91,11 +91,15 @@ export async function renderStorekeeperDashboard(container, user) {
 async function loadStock(skType, siteParam, typeColor) {
   try {
     const search = document.getElementById("sk-search")?.value?.toLowerCase() || "";
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/stock?${siteParam}&storekeeper_type=eq.${skType}&order=material_name.asc&limit=200`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
-    );
-    let items = await res.json();
+    const siteIds = siteParam.replace("site_id=in.(", "").replace("site_id=eq.", "").replace(")", "").split(",").map(Number);
+    let query = supabase.from("stock").select("*").eq("storekeeper_type", skType).order("material_name", { ascending: true }).limit(200);
+    if (siteIds.length === 1) {
+      query = query.eq("site_id", siteIds[0]);
+    } else if (siteIds.length > 1) {
+      query = query.in("site_id", siteIds);
+    }
+    const { data: items, error } = await query;
+    if (error) throw error;
     if (!Array.isArray(items)) items = [];
     if (search) items = items.filter(i => i.material_name?.toLowerCase().includes(search));
     const low = items.filter(i => (i.quantity||0) < 10 && (i.quantity||0) > 0).length;
@@ -122,11 +126,16 @@ async function loadStock(skType, siteParam, typeColor) {
 
 async function loadIssueRequests(siteParam) {
   try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/material_requests?status=eq.pm_approved&${siteParam}&order=created_at.asc&limit=30`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
-    );
-    const arr = (await res.json()) || [];
+    const siteIds = siteParam.replace("site_id=in.(", "").replace("site_id=eq.", "").replace(")", "").split(",").map(Number);
+    let query = supabase.from("material_requests").select("*").eq("status", "pm_approved").order("created_at", { ascending: true }).limit(30);
+    if (siteIds.length === 1) {
+      query = query.eq("site_id", siteIds[0]);
+    } else if (siteIds.length > 1) {
+      query = query.in("site_id", siteIds);
+    }
+    const { data: arr, error } = await query;
+    if (error) throw error;
+    const items = arr || [];
     const el = document.getElementById("sk-pending-issues"); if (el) el.textContent = arr.length;
     const list = document.getElementById("sk-issue-list"); if (!list) return;
     if (!arr.length) { list.innerHTML = `<div style="color:var(--accent-green);font-size:13px;text-align:center;padding:20px;">✓ No pending issue requests</div>`; return; }
@@ -146,11 +155,16 @@ async function loadIssueRequests(siteParam) {
 
 async function loadRecentGRNs(skType, siteParam) {
   try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/grns?${siteParam}&storekeeper_type=eq.${skType}&order=created_at.desc&limit=10`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
-    );
-    const arr = (await res.json()) || [];
+    const siteIds = siteParam.replace("site_id=in.(", "").replace("site_id=eq.", "").replace(")", "").split(",").map(Number);
+    let query = supabase.from("grns").select("*").eq("storekeeper_type", skType).order("created_at", { ascending: false }).limit(10);
+    if (siteIds.length === 1) {
+      query = query.eq("site_id", siteIds[0]);
+    } else if (siteIds.length > 1) {
+      query = query.in("site_id", siteIds);
+    }
+    const { data: arr, error } = await query;
+    if (error) throw error;
+    const items = arr || [];
     const el = document.getElementById("sk-pending-grns"); if (el) el.textContent = arr.filter(g=>g.status==="pending").length;
     const list = document.getElementById("sk-grn-list"); if (!list) return;
     if (!arr.length) { list.innerHTML = `<p style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px;">No GRNs submitted yet.</p>`; return; }
@@ -302,13 +316,19 @@ function openGRNScannerModal(user, skType, siteId) {
     }
     if (btn) { btn.disabled = true; btn.textContent = "Submitting…"; }
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/grns`, {
-        method: "POST",
-        headers: { "Content-Type":"application/json", apikey:SUPABASE_ANON_KEY, Authorization:`Bearer ${SUPABASE_ANON_KEY}`, Prefer:"return=representation" },
-        body: JSON.stringify({ site_id:siteId, grn_number:grnNum, invoice_number:invNum, supplier, items, total_value:totalValue, storekeeper_type:skType, received_by:user.id, status:"pending" })
-      });
-      const saved = await res.json();
-      const grnId = (Array.isArray(saved)?saved[0]:saved)?.id;
+      const { data: saved, error } = await supabase.from("grns").insert({
+        site_id: siteId,
+        grn_number: grnNum,
+        invoice_number: invNum,
+        supplier,
+        items,
+        total_value: totalValue,
+        storekeeper_type: skType,
+        received_by: user.id,
+        status: "pending"
+      }).select().single();
+      if (error) throw error;
+      const grnId = saved?.id;
       for (const item of items) await upsertStock(siteId, item, skType, user.id, user);
       await logAudit({ action:"grn_submitted", module:"storekeeper", record_id:grnId, after:{grn_number:grnNum,items:items.length,total:totalValue}, reason:`GRN by ${user.name} for ${supplier}` });
       closeModal();
@@ -378,27 +398,42 @@ function openManualGRNModal(user, skType, siteId) {
     if (!invNum) { showToast("Invoice number is required","error"); return; }
     const totalValue=items.reduce((s,i)=>s+(i.quantity*i.unit_price),0);
     try {
-      const res=await fetch(`${SUPABASE_URL}/rest/v1/grns`,{method:"POST",headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`,Prefer:"return=representation"},body:JSON.stringify({site_id:siteId,grn_number:grnNum,invoice_number:invNum,supplier,items,total_value:totalValue,storekeeper_type:skType,received_by:user.id,status:"pending"})});
-      const saved=await res.json();
-      const grnId=(Array.isArray(saved)?saved[0]:saved)?.id;
-      for (const item of items) await upsertStock(siteId,item,skType,user.id,user);
-      await logAudit({action:"grn_manual",module:"storekeeper",record_id:grnId,after:{grn_number:grnNum,items:items.length},reason:`Manual GRN by ${user.name}`});
+      const { data: saved, error } = await supabase.from("grns").insert({
+        site_id: siteId,
+        grn_number: grnNum,
+        invoice_number: invNum,
+        supplier,
+        items,
+        total_value: totalValue,
+        storekeeper_type: skType,
+        received_by: user.id,
+        status: "pending"
+      }).select().single();
+      if (error) throw error;
+      const grnId = saved?.id;
+      for (const item of items) await upsertStock(siteId, item, skType, user.id, user);
+      await logAudit({ action:"grn_manual", module:"storekeeper", record_id:grnId, after:{grn_number:grnNum,items:items.length}, reason:`Manual GRN by ${user.name}` });
       closeModal();
-      showToast(`GRN submitted — ${items.length} items`,"success");
-    } catch(err) { showToast("Failed: "+err.message,"error"); }
+      showToast(`GRN submitted — ${items.length} items`, "success");
+    } catch(err) { showToast("Failed: " + err.message, "error"); }
   };
 }
 
 // ─── Stock Issue ──────────────────────────────────────────────
 async function handleStockIssue(user, reqId, reqJson, skType) {
-  let req; try { req=JSON.parse(reqJson); } catch { return; }
-  const siteId=req.site_id;
-  const check=await fetch(`${SUPABASE_URL}/rest/v1/stock?site_id=eq.${siteId}&material_name=eq.${encodeURIComponent(req.material_name)}&storekeeper_type=eq.${skType}&limit=1`,
-    {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}});
-  const stockArr=await check.json();
-  const stock=Array.isArray(stockArr)?stockArr[0]:null;
-  const available=stock?.quantity||0;
-  const enough=available>=req.quantity;
+  let req; try { req = JSON.parse(reqJson); } catch { return; }
+  const siteId = req.site_id;
+  const { data: stockArr, error: stockErr } = await supabase
+    .from("stock")
+    .select("*")
+    .eq("site_id", siteId)
+    .eq("material_name", req.material_name)
+    .eq("storekeeper_type", skType)
+    .limit(1);
+  if (stockErr) throw stockErr;
+  const stock = Array.isArray(stockArr) ? stockArr[0] : null;
+  const available = stock?.quantity || 0;
+  const enough = available >= req.quantity;
   showModal(`
     <h2 style="font-family:var(--font-display);font-size:20px;font-weight:700;margin-bottom:14px;">📦 Issue Material</h2>
     <div style="background:var(--bg-secondary);border-radius:8px;padding:14px;margin-bottom:16px;">
@@ -412,16 +447,37 @@ async function handleStockIssue(user, reqId, reqJson, skType) {
 
   window._confirmIssue = async (reqId, stockId, qty, name) => {
     try {
-      await fetch(`${SUPABASE_URL}/rest/v1/material_requests?id=eq.${reqId}`,{method:"PATCH",headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`},body:JSON.stringify({status:"issued",issued_by:user.id,issued_at:new Date().toISOString(),expires_at:new Date(new Date().setHours(23,59,59,0)).toISOString()})});
-      if (stockId&&stock) await fetch(`${SUPABASE_URL}/rest/v1/stock?id=eq.${stockId}`,{method:"PATCH",headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`},body:JSON.stringify({quantity:Math.max(0,(stock.quantity||0)-qty),last_updated:new Date().toISOString(),updated_by:user.id})});
-      await logAudit({action:"stock_issued",module:"storekeeper",record_id:reqId,before:{quantity:stock?.quantity},after:{quantity:(stock?.quantity||0)-qty},reason:`Issued ${qty}×${name} by ${user.name}`});
+      const { error: reqErr } = await supabase
+        .from("material_requests")
+        .update({
+          status: "issued",
+          issued_by: user.id,
+          issued_at: new Date().toISOString(),
+          expires_at: new Date(new Date().setHours(23, 59, 59, 0)).toISOString()
+        })
+        .eq("id", reqId);
+      if (reqErr) throw reqErr;
+
+      if (stockId && stock) {
+        const { error: stockErr } = await supabase
+          .from("stock")
+          .update({
+            quantity: Math.max(0, (stock.quantity || 0) - qty),
+            last_updated: new Date().toISOString(),
+            updated_by: user.id
+          })
+          .eq("id", stockId);
+        if (stockErr) throw stockErr;
+      }
+
+      await logAudit({ action: "stock_issued", module: "storekeeper", record_id: reqId, before: { quantity: stock?.quantity }, after: { quantity: (stock?.quantity || 0) - qty }, reason: `Issued ${qty}×${name} by ${user.name}` });
       closeModal();
-      showToast(`Issued ${qty} × ${name}`,"success");
+      showToast(`Issued ${qty} × ${name}`, "success");
       // Refresh the storekeeper dashboard lists
       if (window.loadSKStock) window.loadSKStock();
       if (window.loadSKIssues) window.loadSKIssues();
       if (window.loadSKGRNs) window.loadSKGRNs();
-    } catch(err) { showToast("Failed: "+err.message,"error"); }
+    } catch(err) { showToast("Failed: " + err.message, "error"); }
   };
 }
 
@@ -453,21 +509,31 @@ function openIncidentModal(user, skType, siteId) {
     </div>`);
 
   window._submitIncident = async () => {
-    const type=document.getElementById("inc-type")?.value;
-    const material=document.getElementById("inc-mat")?.value;
-    const qty=parseFloat(document.getElementById("inc-qty")?.value)||0;
-    const value=parseFloat(document.getElementById("inc-val")?.value)||0;
-    const reason=document.getElementById("inc-reason")?.value;
-    const personnel=(document.getElementById("inc-per")?.value||"").split(",").map(s=>s.trim()).filter(Boolean);
-    if (!material) { showToast("Enter material name","error"); return; }
+    const type = document.getElementById("inc-type")?.value;
+    const material = document.getElementById("inc-mat")?.value;
+    const qty = parseFloat(document.getElementById("inc-qty")?.value) || 0;
+    const value = parseFloat(document.getElementById("inc-val")?.value) || 0;
+    const reason = document.getElementById("inc-reason")?.value;
+    const personnel = (document.getElementById("inc-per")?.value || "").split(",").map(s => s.trim()).filter(Boolean);
+    if (!material) { showToast("Enter material name", "error"); return; }
     try {
-      const res=await fetch(`${SUPABASE_URL}/rest/v1/incidents`,{method:"POST",headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`,Prefer:"return=representation"},body:JSON.stringify({site_id:siteId,reported_by:user.id,type,material_name:material,quantity:qty,estimated_value:value,reason,personnel_involved:personnel,status:"pending"})});
-      const saved=await res.json();
-      const incId=(Array.isArray(saved)?saved[0]:saved)?.id;
-      await logAudit({action:"incident_reported",module:"storekeeper",record_id:incId,after:{type,material,qty,value},reason});
+      const { data: saved, error } = await supabase.from("incidents").insert({
+        site_id: siteId,
+        reported_by: user.id,
+        type,
+        material_name: material,
+        quantity: qty,
+        estimated_value: value,
+        reason,
+        personnel_involved: personnel,
+        status: "pending"
+      }).select().single();
+      if (error) throw error;
+      const incId = saved?.id;
+      await logAudit({ action: "incident_reported", module: "storekeeper", record_id: incId, after: { type, material, qty, value }, reason });
       closeModal();
-      showToast(`Incident reported: ${type} — ${material}`,"warning");
-    } catch(err) { showToast("Failed: "+err.message,"error"); }
+      showToast(`Incident reported: ${type} — ${material}`, "warning");
+    } catch(err) { showToast("Failed: " + err.message, "error"); }
   };
 }
 
@@ -484,41 +550,40 @@ async function upsertStock(siteId, item, skType, userId, userObj) {
   }
 
   // Existing approved stock OR already-queued pending — merge into existing stock
-  const check = await fetch(
-    `${SUPABASE_URL}/rest/v1/stock?site_id=eq.${siteId}&material_name=eq.${encodeURIComponent(item.name)}&storekeeper_type=eq.${skType}&limit=1`,
-    {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}
-  );
-  const existing = await check.json();
+  const { data: existing, error: existingErr } = await supabase
+    .from("stock")
+    .select("*")
+    .eq("site_id", siteId)
+    .eq("material_name", item.name)
+    .eq("storekeeper_type", skType)
+    .limit(1);
+  if (existingErr) throw existingErr;
+
   if (Array.isArray(existing) && existing.length) {
     const cur = existing[0];
-    await fetch(`${SUPABASE_URL}/rest/v1/stock?id=eq.${cur.id}`,{
-      method:"PATCH",
-      headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`},
-      body:JSON.stringify({
-        quantity:(cur.quantity||0)+item.quantity,
-        unit_price:item.unit_price||cur.unit_price,
-        last_updated:new Date().toISOString(),
-        updated_by:userId
+    await supabase
+      .from("stock")
+      .update({
+        quantity: (cur.quantity || 0) + item.quantity,
+        unit_price: item.unit_price || cur.unit_price,
+        last_updated: new Date().toISOString(),
+        updated_by: userId
       })
-    });
+      .eq("id", cur.id);
   } else if (!gate.alreadyQueued) {
     // No existing stock and not queued — create new approved stock row
-    await fetch(`${SUPABASE_URL}/rest/v1/stock`,{
-      method:"POST",
-      headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`,Prefer:"return=minimal"},
-      body:JSON.stringify({
-        site_id:siteId,
-        material_name:item.name,
-        material_code:matched?.code||null,
-        category:matched?.category||"Other",
-        quantity:item.quantity,
-        unit:item.unit||matched?.unit||"Pcs",
-        unit_price:item.unit_price||0,
-        storekeeper_type:skType,
-        status:"approved",
-        updated_by:userId,
-        last_updated:new Date().toISOString()
-      })
+    await supabase.from("stock").insert({
+      site_id: siteId,
+      material_name: item.name,
+      material_code: matched?.code || null,
+      category: matched?.category || "Other",
+      quantity: item.quantity,
+      unit: item.unit || matched?.unit || "Pcs",
+      unit_price: item.unit_price || 0,
+      storekeeper_type: skType,
+      status: "approved",
+      updated_by: userId,
+      last_updated: new Date().toISOString()
     });
   }
   // If gate.alreadyQueued, the material is already in the watchlist pending approval — skip stock insert

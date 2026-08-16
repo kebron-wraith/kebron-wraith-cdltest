@@ -5,7 +5,7 @@
 // until approved by an admin/store_manager.
 // ============================================================
 
-import { SUPABASE_URL, getHeaders } from "../config.js";
+import { supabase } from "../config.js";
 import { findMaterial } from "../data.js";
 import { logAudit } from "./audit_core.js";
 import { sendNotif } from "./notifs.js";
@@ -22,109 +22,106 @@ import { ROLES } from "./roles.js";
  * { isNew: true, watchId } — the stock is NOT inserted; it waits for approval.
  */
 export async function checkAndQueueNewMaterial(materialName, siteId, skType, userId, userInfo) {
-  const auth = getHeaders();
+  try {
+    // Check if exact name exists as approved stock for this site+type
+    const { data: existing, error: chkErr } = await supabase
+      .from("stock")
+      .select("id,status")
+      .eq("site_id", siteId)
+      .eq("material_name", materialName)
+      .eq("storekeeper_type", skType)
+      .eq("status", "approved")
+      .limit(1);
+    if (chkErr && chkErr.code !== '42703') throw chkErr; // ignore missing status column
+    if (Array.isArray(existing) && existing.length > 0) {
+      return { isNew: false, stockId: existing[0].id };
+    }
 
-  // Check if exact name exists as approved stock for this site+type
-  const check = await fetch(
-    `${SUPABASE_URL}/rest/v1/stock` +
-    `?select=id,status` +
-    `&site_id=eq.${siteId}` +
-    `&material_name=eq.${encodeURIComponent(materialName)}` +
-    `&storekeeper_type=eq.${skType}` +
-    `&status=eq.approved` +
-    `&limit=1`,
-    { headers: auth }
-  );
-  let existing = await check.json();
-  // Fallback: if status column missing (migration_v10 not applied), retry without filter
-  if (!check.ok && check.status === 400) {
-    const checkRetry = await fetch(
-      `${SUPABASE_URL}/rest/v1/stock`
-      + `?select=id&site_id=eq.`
-      + `&material_name=eq.`
-      + `&storekeeper_type=eq.`
-      + `&limit=1`,
-      { headers: auth }
-    );
-    existing = checkRetry.ok ? await checkRetry.json().catch(() => []) : [];
-  }
-
-  if (Array.isArray(existing) && existing.length > 0) {
-    return { isNew: false, stockId: existing[0].id };
-  }
-
-  // Also check pending watchlist entries for the same name (dedup)
-  const dupCheck = await fetch(
-    `${SUPABASE_URL}/rest/v1/material_watchlist` +
-    `?select=id` +
-    `&site_id=eq.${siteId}` +
-    `&storekeeper_type=eq.${skType}` +
-    `&material_name=eq.${encodeURIComponent(materialName)}` +
-    `&status=eq.pending` +
-    `&limit=1`,
-    { headers: auth }
-  );
-  const dupes = await dupCheck.json();
-  if (Array.isArray(dupes) && dupes.length > 0) {
-    // Already queued by another storekeeper — treat as "not new stock yet"
-    return { isNew: false, watchId: dupes[0].id, alreadyQueued: true };
-  }
-
-  // New material — queue for approval
-  const matched = findMaterial(materialName);
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/material_watchlist`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...auth,
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify({
-      material_name: materialName,
-      material_code: matched?.code || null,
-      category: matched?.category || "Other",
-      unit: matched?.unit || null,
-      site_id: siteId,
-      storekeeper_type: skType,
-      proposed_by: userId,
-      status: "pending",
-      created_at: new Date().toISOString(),
-    }),
-  });
-  const saved = await res.json();
-  const watchId = Array.isArray(saved) ? saved[0]?.id : saved?.id;
-
-  if (watchId) {
-    await logAudit({
-      action: "material_queued",
-      module: "material_approvals",
-      record_id: watchId,
-      after: { material_name: materialName, site_id: siteId, storekeeper_type: skType },
-      reason: `New material proposed by ${userInfo?.name || userId}`,
-    });
-
-    // Notify admins / store_managers that approval is needed
-    const approverRoles = ["admin", "store_manager"];
-    const notifRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/users?role=in.(${approverRoles.join(",")})&select=id`,
-      { headers: auth }
-    );
-    const approvers = await notifRes.json();
-    if (Array.isArray(approvers)) {
-      for (const approver of approvers) {
-        await sendNotif(
-          approver.id,
-          "Material Approval Needed",
-          `"${materialName}" was proposed by ${userInfo?.name || "a storekeeper"}. Review in Material Approvals.`,
-          "approval",
-          watchId,
-          "material_watchlist"
-        );
+    // Fallback: if status column missing (migration_v10 not applied), retry without filter
+    if (chkErr && chkErr.code === '42703') {
+      const { data: existingRetry, error: retryErr } = await supabase
+        .from("stock")
+        .select("id")
+        .eq("site_id", siteId)
+        .eq("material_name", materialName)
+        .eq("storekeeper_type", skType)
+        .limit(1);
+      if (retryErr) throw retryErr;
+      if (Array.isArray(existingRetry) && existingRetry.length > 0) {
+        return { isNew: false, stockId: existingRetry[0].id };
       }
     }
-  }
 
-  return { isNew: true, watchId, alreadyQueued: false };
+    // Also check pending watchlist entries for the same name (dedup)
+    const { data: dupes, error: dupErr } = await supabase
+      .from("material_watchlist")
+      .select("id")
+      .eq("site_id", siteId)
+      .eq("storekeeper_type", skType)
+      .eq("material_name", materialName)
+      .eq("status", "pending")
+      .limit(1);
+    if (dupErr) throw dupErr;
+    if (Array.isArray(dupes) && dupes.length > 0) {
+      // Already queued by another storekeeper — treat as "not new stock yet"
+      return { isNew: false, watchId: dupes[0].id, alreadyQueued: true };
+    }
+
+    // New material — queue for approval
+    const matched = findMaterial(materialName);
+    const { data: saved, error: insErr } = await supabase
+      .from("material_watchlist")
+      .insert({
+        material_name: materialName,
+        material_code: matched?.code || null,
+        category: matched?.category || "Other",
+        unit: matched?.unit || null,
+        site_id: siteId,
+        storekeeper_type: skType,
+        proposed_by: userId,
+        status: "pending",
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+    if (insErr) throw insErr;
+    const watchId = saved?.id;
+
+    if (watchId) {
+      await logAudit({
+        action: "material_queued",
+        module: "material_approvals",
+        record_id: watchId,
+        after: { material_name: materialName, site_id: siteId, storekeeper_type: skType },
+        reason: `New material proposed by ${userInfo?.name || userId}`,
+      });
+
+      // Notify admins / store_managers that approval is needed
+      const approverRoles = ["admin", "store_manager"];
+      const { data: approvers, error: notifErr } = await supabase
+        .from("users")
+        .select("id")
+        .in("role", approverRoles);
+      if (notifErr) throw notifErr;
+      if (Array.isArray(approvers)) {
+        for (const approver of approvers) {
+          await sendNotif(
+            approver.id,
+            "Material Approval Needed",
+            `"${materialName}" was proposed by ${userInfo?.name || "a storekeeper"}. Review in Material Approvals.`,
+            "approval",
+            watchId,
+            "material_watchlist"
+          );
+        }
+      }
+    }
+
+    return { isNew: true, watchId, alreadyQueued: false };
+  } catch (err) {
+    showToast(`Error: ${err.message}`, "error");
+    return { isNew: false, error: err.message };
+  }
 }
 
 /**
@@ -157,17 +154,18 @@ async function loadPendingMaterials(user) {
   wrap.innerHTML = `<div class="spinner" style="margin:60px auto;"></div>`;
 
   try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/material_watchlist` +
-      `?status=eq.pending&order=created_at.desc&limit=100`,
-      { headers: getHeaders() }
-    );
+    const { data: items, error } = await supabase
+      .from("material_watchlist")
+      .select("*")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(100);
     // Migration v10 not applied - table does not exist yet
-    if (!res.ok && res.status === 404) {
+    if (error && error.code === '42P01') {
       wrap.innerHTML = '<div class="card" style="text-align:center;padding:40px;color:var(--text-300);">No pending material approvals</div>';
       return;
     }
-    const items = await res.json();
+    if (error) throw error;
     const arr = Array.isArray(items) ? items : [];
 
     if (!arr.length) {
@@ -185,14 +183,14 @@ async function loadPendingMaterials(user) {
           ).join("")}
         </tr></thead>
         <tbody>${arr.map(w => {
-	          const escName = w.material_name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
-	          const siteName = w.site_id ? `Site ${w.site_id}` : "All Sites";
-	          let bg, col;
-	          if (w.storekeeper_type === "local") { bg = "rgba(46,160,67,0.15)"; col = "var(--accent-green)"; }
-	          else if (w.storekeeper_type === "imported") { bg = "rgba(61,142,248,0.15)"; col = "var(--accent-blue)"; }
-	          else { bg = "rgba(243,156,18,0.15)"; col = "var(--orange)"; }
-	          const propDate = new Date(w.created_at).toLocaleDateString("en-KE", { month: "short", day: "numeric" });
-	          return `
+          const escName = w.material_name.replace(/'/g, "\\'").replace(/"/g, """);
+          const siteName = w.site_id ? `Site ${w.site_id}` : "All Sites";
+          let bg, col;
+          if (w.storekeeper_type === "local") { bg = "rgba(46,160,67,0.15)"; col = "var(--accent-green)"; }
+          else if (w.storekeeper_type === "imported") { bg = "rgba(61,142,248,0.15)"; col = "var(--accent-blue)"; }
+          else { bg = "rgba(243,156,18,0.15)"; col = "var(--orange)"; }
+          const propDate = new Date(w.created_at).toLocaleDateString("en-KE", { month: "short", day: "numeric" });
+          return `
           <tr style="border-bottom:1px solid rgba(30,35,48,0.4);">
             <td style="padding:10px 8px;font-weight:500;color:var(--text-100);">${w.material_name}</td>
             <td style="padding:10px 8px;color:var(--text-200);">${w.site_id ? `Site ${w.site_id}` : "All Sites"}</td>
@@ -213,7 +211,7 @@ async function loadPendingMaterials(user) {
                 class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 10px;">✕ Reject</button>
             </td>
           </tr>`;
-	        }).join("")}
+        }).join("")}
         </tbody>
       </table>
     </div>`;
@@ -232,39 +230,52 @@ async function loadPendingMaterials(user) {
  * actual stock row with status='approved' so it's visible to requesters.
  */
 async function approveMaterial(watchId, materialName, user) {
-  const auth = getHeaders();
-
   try {
     // Fetch the full watchlist entry
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/material_watchlist?id=eq.${watchId}`, { headers: auth });
-    if (!res.ok && res.status === 404) { showToast("Watchlist table not available yet", "error"); return; }
-    const entries = await res.json();
-    const entry = Array.isArray(entries) ? entries[0] : null;
+    const { data: entries, error: fetchErr } = await supabase
+      .from("material_watchlist")
+      .select("*")
+      .eq("id", watchId)
+      .single();
+    if (fetchErr && fetchErr.code === '42P01') { showToast("Watchlist table not available yet", "error"); return; }
+    if (fetchErr) throw fetchErr;
+    const entry = entries;
     if (!entry) { showToast("Watchlist entry not found", "error"); return; }
 
     // Check if approved stock already exists (race condition guard)
-    const existingCheck = await fetch(
-      `${SUPABASE_URL}/rest/v1/stock` +
-      `?select=id&site_id=eq.${entry.site_id}&material_name=eq.${encodeURIComponent(materialName)}` +
-      `&storekeeper_type=eq.${entry.storekeeper_type}&status=eq.approved&limit=1`,
-      { headers: auth }
-    );
-    let existing = [];
-    if (existingCheck.ok) { existing = await existingCheck.json().catch(() => []); } else if (existingCheck.status === 400) { const retryRes = await fetch(`${SUPABASE_URL}/rest/v1/stock?select=id&site_id=eq.${entry.site_id}&material_name=eq.${encodeURIComponent(materialName)}&storekeeper_type=eq.${entry.storekeeper_type}&limit=1`, { headers: auth }); if (retryRes.ok) existing = await retryRes.json().catch(() => []); }
+    const { data: existing, error: existingErr } = await supabase
+      .from("stock")
+      .select("id")
+      .eq("site_id", entry.site_id)
+      .eq("material_name", materialName)
+      .eq("storekeeper_type", entry.storekeeper_type)
+      .eq("status", "approved")
+      .limit(1);
+    let existingArr = [];
+    if (!existingErr) { existingArr = Array.isArray(existing) ? existing : []; }
+    else if (existingErr.code === '42703') { // fallback: status column missing
+      const { data: retryData, error: retryErr } = await supabase
+        .from("stock")
+        .select("id")
+        .eq("site_id", entry.site_id)
+        .eq("material_name", materialName)
+        .eq("storekeeper_type", entry.storekeeper_type)
+        .limit(1);
+      if (!retryErr) existingArr = Array.isArray(retryData) ? retryData : [];
+    }
 
-    if (Array.isArray(existing) && existing.length > 0) {
+    if (Array.isArray(existingArr) && existingArr.length > 0) {
       // Approved stock already exists — reject the watchlist entry instead
-      await fetch(`${SUPABASE_URL}/rest/v1/material_watchlist?id=eq.${watchId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...auth },
-        body: JSON.stringify({ status: "rejected", approved_by: user.id, approved_at: new Date().toISOString(), rejection_reason: "Stock already exists as approved." }),
-      });
+      const { error: rejErr } = await supabase
+        .from("material_watchlist")
+        .update({ status: "rejected", approved_by: user.id, approved_at: new Date().toISOString(), rejection_reason: "Stock already exists as approved." })
+        .eq("id", watchId);
+      if (rejErr) throw rejErr;
     } else {
       // Create the actual stock row with status='approved'
-      await fetch(`${SUPABASE_URL}/rest/v1/stock`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...auth, Prefer: "return=minimal" },
-        body: JSON.stringify({
+      const { error: insErr } = await supabase
+        .from("stock")
+        .insert({
           site_id: entry.site_id,
           material_name: entry.material_name,
           material_code: entry.material_code,
@@ -276,15 +287,15 @@ async function approveMaterial(watchId, materialName, user) {
           status: "approved",
           updated_by: user.id,
           last_updated: new Date().toISOString(),
-        }),
-      });
+        });
+      if (insErr) throw insErr;
 
       // Mark watchlist as approved
-      await fetch(`${SUPABASE_URL}/rest/v1/material_watchlist?id=eq.${watchId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...auth },
-        body: JSON.stringify({ status: "approved", approved_by: user.id, approved_at: new Date().toISOString() }),
-      });
+      const { error: updErr } = await supabase
+        .from("material_watchlist")
+        .update({ status: "approved", approved_by: user.id, approved_at: new Date().toISOString() })
+        .eq("id", watchId);
+      if (updErr) throw updErr;
     }
 
     await logAudit({
@@ -306,18 +317,16 @@ async function approveMaterial(watchId, materialName, user) {
  * rejectMaterial — marks a watchlist entry as rejected with optional reason.
  */
 async function rejectMaterial(watchId, user) {
-  const auth = getHeaders();
-
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/material_watchlist?id=eq.${watchId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...auth, Prefer: "return=minimal" },
-      body: JSON.stringify({
+    const { error } = await supabase
+      .from("material_watchlist")
+      .update({
         status: "rejected",
         approved_by: user.id,
         approved_at: new Date().toISOString(),
-      }),
-    });
+      })
+      .eq("id", watchId);
+    if (error) throw error;
 
     await logAudit({
       action: "material_rejected",

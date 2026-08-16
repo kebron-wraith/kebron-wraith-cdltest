@@ -1,6 +1,6 @@
 // CDL — modules/dashboards_owner.js
 // Company Owner: cinematic, AI greeting, full enterprise intelligence
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SITES } from "../config.js";
+import { supabase, SITES } from "../config.js";
 import { callAI } from "./ai_engine.js";
 import { getSystemPrompt } from "./ai_roles.js";
 import { initAIChat } from "./ai_chat.js";
@@ -112,18 +112,18 @@ export async function renderOwnerDashboard(container, user) {
     </div>`;
 
   // Load data in parallel
-  const [stock, requests, incidents, grns, procurement] = await Promise.all([
-    fetch(`${SUPABASE_URL}/rest/v1/stock?select=site_id,quantity,unit_price&limit=500`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
-    fetch(`${SUPABASE_URL}/rest/v1/material_requests?status=eq.pending&select=id,urgency,site_id&limit=100`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
-    fetch(`${SUPABASE_URL}/rest/v1/incidents?status=eq.pending&select=id,estimated_value,type&limit=50`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
-    fetch(`${SUPABASE_URL}/rest/v1/grns?status=eq.pending&select=id&limit=50`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
-    fetch(`${SUPABASE_URL}/rest/v1/procurement?status=in.(pending,pm_approved)&select=id,total_amount&limit=50`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
+  const [stockRes, reqRes, incRes, grnRes, procRes] = await Promise.all([
+    supabase.from("stock").select("site_id,quantity,unit_price").limit(500),
+    supabase.from("material_requests").select("id,urgency,site_id").eq("status", "pending").limit(100),
+    supabase.from("incidents").select("id,estimated_value,type").eq("status", "pending").limit(50),
+    supabase.from("grns").select("id").eq("status", "pending").limit(50),
+    supabase.from("procurement").select("id,total_amount").in("status", ["pending", "pm_approved"]).limit(50),
   ]);
+  const stock = stockRes.data || [];
+  const requests = reqRes.data || [];
+  const incidents = incRes.data || [];
+  const grns = grnRes.data || [];
+  const procurement = procRes.data || [];
 
   const totalVal = stock.reduce((s,i)=>s+((i.quantity||0)*(i.unit_price||0)),0);
   const lowStock = stock.filter(i=>(i.quantity||0)<10 && (i.quantity||0)>0).length;

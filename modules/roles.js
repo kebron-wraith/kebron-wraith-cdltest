@@ -19,6 +19,18 @@ const company_owner = {
   canResolveIncident: true,
   showPopups: true,
   aiMsgsPerDay: 20,
+  // Executive roles are read-only + AI advisor only — NO write access to any operational data
+  canCreateRequest: false,
+  canApproveRequests: false,
+  canIssueStock: false,
+  canCreateTransfer: false,
+  canApproveTransfers: false,
+  canEditInventory: false,
+  canVerifyGRN: false,
+  canApproveStockAdjustments: false,
+  canScanGRN: false,
+  canCreateIncident: false,
+  canCreateProcurement: false,
 };
 
 const ceo = {
@@ -34,6 +46,18 @@ const ceo = {
   canResolveIncident: true,
   showPopups: true,
   aiMsgsPerDay: 7,
+  // Executive roles are read-only + AI advisor only — NO write access to any operational data
+  canCreateRequest: false,
+  canApproveRequests: false,
+  canIssueStock: false,
+  canCreateTransfer: false,
+  canApproveTransfers: false,
+  canEditInventory: false,
+  canVerifyGRN: false,
+  canApproveStockAdjustments: false,
+  canScanGRN: false,
+  canCreateIncident: false,
+  canCreateProcurement: false,
 };
 
 const office_manager = {
@@ -56,6 +80,17 @@ const asset_manager = {
   showPopups: true,
   aiMsgsPerDay: 0,
   // NOTE: NO budget access unless granted by CEO
+  // Executive roles are read-only + AI advisor only — NO write access to operational data
+  canCreateRequest: false,
+  canApproveRequests: false,
+  canIssueStock: false,
+  canCreateTransfer: false,
+  canEditInventory: false,
+  canVerifyGRN: false,
+  canApproveStockAdjustments: false,
+  canScanGRN: false,
+  canCreateIncident: false,
+  canCreateProcurement: false,
 };
 
 const finance = {

@@ -1,5 +1,5 @@
 // CDL — modules/inventory.js
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SITES } from "../config.js";
+import { supabase, SITES } from "../config.js";
 import { logAudit } from "./audit_core.js";
 import { ROLES } from "./roles.js";
 import { findMaterial, MATERIALS_DB, CATEGORIES } from "../data.js";
@@ -22,23 +22,18 @@ async function loadInventoryData(user, siteFilter, isReadOnly) {
   const category = document.getElementById("inv-category")?.value;
   const type = document.getElementById("inv-type")?.value;
   const search = document.getElementById("inv-search")?.value?.toLowerCase();
-  let query = `${SUPABASE_URL}/rest/v1/stock?select=*,sites(name)&order=material_name.asc&limit=200`;
-  // Feature 5: Requesters (read-only) can only see approved/available materials
-  if (isReadOnly) query += `&status=eq.approved`;
-  if (siteId) query += `&site_id=eq.${siteId}`; else if (siteFilter?.length) query += `&site_id=in.(${siteFilter.join(",")})`;
-  if (category) query += `&category=eq.${encodeURIComponent(category)}`;
-  if (type) query += `&storekeeper_type=eq.${type}`;
   try {
-    let res = await fetch(query, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
-    // Fallback: if status column doesn't exist (migration_v10 not applied to DB), retry without the read-only filter
-    if (!res.ok && res.status === 400 && query.includes("status=eq.approved")) {
-      res = await fetch(query.replace("&status=eq.approved", ""), { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
-    }
-    if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
-    let items = await res.json();
-    if (!Array.isArray(items)) items = [];
-    if (search) items = items.filter(i => i.material_name?.toLowerCase().includes(search));
-    renderInvStats(items); renderInvTable(items, user, isReadOnly);
+    let query = supabase.from("stock").select("*,sites(name)").order("material_name", { ascending: true }).limit(200);
+    // Feature 5: Requesters (read-only) can only see approved/available materials
+    if (isReadOnly) query = query.eq("status", "approved");
+    if (siteId) query = query.eq("site_id", parseInt(siteId)); else if (siteFilter?.length) query = query.in("site_id", siteFilter);
+    if (category) query = query.eq("category", category);
+    if (type) query = query.eq("storekeeper_type", type);
+    const { data: items, error } = await query;
+    if (error) throw error;
+    let arr = Array.isArray(items) ? items : [];
+    if (search) arr = arr.filter(i => i.material_name?.toLowerCase().includes(search));
+    renderInvStats(arr); renderInvTable(arr, user, isReadOnly);
   } catch (err) { const wrap = document.getElementById("inv-table-wrap"); if (wrap) wrap.innerHTML = `<p style="color:var(--red);">Error: ${err.message}</p>`; }
 }
 
@@ -60,10 +55,39 @@ function renderInvTable(items, user, isReadOnly) {
 
 function showAddStockModal(user, siteFilter) {
   showModal(`<h2 style="font-size:18px;font-weight:700;color:var(--text-100);margin-bottom:20px;">Add Stock Item</h2><div style="display:flex;flex-direction:column;gap:16px;"><div><label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-400);margin-bottom:6px;">Site</label><select id="m-site" style="width:100%;background:var(--bg-700);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text-100);">${SITES.filter(s=>siteFilter.includes(s.id)).map(s=>`<option value="${s.id}">${s.name}</option>`).join("")}</select></div><div><label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-400);margin-bottom:6px;">Material Name</label><input id="m-name" type="text" list="mat-list" style="width:100%;background:var(--bg-700);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text-100);"><datalist id="mat-list">${MATERIALS_DB.slice(0,100).map(m=>`<option value="${m.name}">`).join("")}</datalist></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;"><div><label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-400);margin-bottom:6px;">Quantity</label><input id="m-qty" type="number" min="0" value="0" style="width:100%;background:var(--bg-700);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text-100);"></div><div><label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-400);margin-bottom:6px;">Unit Price (KES)</label><input id="m-price" type="number" min="0" style="width:100%;background:var(--bg-700);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text-100);"></div><div><label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-400);margin-bottom:6px;">Type</label><select id="m-type" style="width:100%;background:var(--bg-700);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text-100);"><option value="local">Local</option><option value="imported">Imported</option><option value="scaffolding">Scaffolding</option></select></div></div><div style="display:flex;gap:12px;"><button onclick="window._invSaveStock()" class="btn btn-gold" style="flex:1;">Save Stock</button><button onclick="window._closeModal()" class="btn btn-ghost">Cancel</button></div></div>`);
-  window._invSaveStock = async () => { const name=document.getElementById("m-name").value.trim(); const siteId=parseInt(document.getElementById("m-site").value); const qty=parseFloat(document.getElementById("m-qty").value)||0; const price=parseFloat(document.getElementById("m-price").value)||null; const type=document.getElementById("m-type").value; if (!name) { showToast("Material name required","error"); return; } const mat=findMaterial(name); const payload={site_id:siteId,material_name:name,material_code:mat?.code||null,category:mat?.category||null,quantity:qty,unit:mat?.unit||null,unit_price:price,storekeeper_type:type,opening_balance_value:qty,updated_by:user.id}; try { const res=await fetch(`${SUPABASE_URL}/rest/v1/stock`,{method:"POST",headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`,Prefer:"return=minimal"},body:JSON.stringify(payload)}); if (!res.ok) throw new Error(await res.text()); await logAudit({action:"stock_created",module:"inventory",after:payload,reason:`Opening balance set for ${name}`}); closeModal(); showToast("Stock added","success"); if (window._invRefresh) window._invRefresh(); } catch(err) { showToast(`Error: ${err.message}`,"error"); } };
+  window._invSaveStock = async () => {
+    const name = document.getElementById("m-name").value.trim();
+    const siteId = parseInt(document.getElementById("m-site").value);
+    const qty = parseFloat(document.getElementById("m-qty").value) || 0;
+    const price = parseFloat(document.getElementById("m-price").value) || null;
+    const type = document.getElementById("m-type").value;
+    if (!name) { showToast("Material name required", "error"); return; }
+    const mat = findMaterial(name);
+    const payload = { site_id: siteId, material_name: name, material_code: mat?.code || null, category: mat?.category || null, quantity: qty, unit: mat?.unit || null, unit_price: price, storekeeper_type: type, opening_balance_value: qty, updated_by: user.id };
+    try {
+      const { data, error } = await supabase.from("stock").insert(payload).select().single();
+      if (error) throw error;
+      await logAudit({ action: "stock_created", module: "inventory", record_id: data?.id, after: payload, reason: `Opening balance set for ${name}` });
+      closeModal();
+      showToast("Stock added", "success");
+      if (window._invRefresh) window._invRefresh();
+    } catch(err) { showToast(`Error: ${err.message}`, "error"); }
+  };
 }
 
 function showAdjustModal(id, name, qty, unit, user) {
   showModal(`<h2 style="font-size:18px;font-weight:700;color:var(--text-100);margin-bottom:6px;">Adjust Stock</h2><p style="color:var(--text-200);font-size:13px;margin-bottom:16px;">${name} · Current: <strong style="color:var(--gold);">${qty} ${unit}</strong></p><div style="display:flex;flex-direction:column;gap:16px;"><div><label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-400);margin-bottom:6px;">New Quantity</label><input id="adj-qty" type="number" value="${qty}" style="width:100%;background:var(--bg-700);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text-100);"></div><div><label style="display:block;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-400);margin-bottom:6px;">Reason</label><textarea id="adj-reason" rows="2" placeholder="Reason for adjustment…" style="width:100%;background:var(--bg-700);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text-100);resize:none;"></textarea></div><div style="display:flex;gap:12px;"><button onclick="window._invApplyAdjust('${id}',${qty})" class="btn btn-gold" style="flex:1;">Apply</button><button onclick="window._closeModal()" class="btn btn-ghost">Cancel</button></div></div>`);
-  window._invApplyAdjust = async (stockId, oldQty) => { const newQty=parseFloat(document.getElementById("adj-qty").value); const reason=document.getElementById("adj-reason").value.trim(); if (isNaN(newQty)) { showToast("Invalid quantity","error"); return; } try { await fetch(`${SUPABASE_URL}/rest/v1/stock?id=eq.${stockId}`,{method:"PATCH",headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`},body:JSON.stringify({quantity:newQty,last_updated:new Date().toISOString(),updated_by:user.id})}); await logAudit({action:"stock_adjusted",module:"inventory",record_id:stockId,before:{quantity:oldQty},after:{quantity:newQty},reason}); closeModal(); showToast("Stock updated","success"); if (window._invRefresh) window._invRefresh(); } catch(err) { showToast(`Error: ${err.message}`,"error"); } };
+  window._invApplyAdjust = async (stockId, oldQty) => {
+    const newQty = parseFloat(document.getElementById("adj-qty").value);
+    const reason = document.getElementById("adj-reason").value.trim();
+    if (isNaN(newQty)) { showToast("Invalid quantity", "error"); return; }
+    try {
+      const { error } = await supabase.from("stock").update({ quantity: newQty, last_updated: new Date().toISOString(), updated_by: user.id }).eq("id", stockId);
+      if (error) throw error;
+      await logAudit({ action: "stock_adjusted", module: "inventory", record_id: stockId, before: { quantity: oldQty, reason }, after: { quantity: newQty }, reason });
+      closeModal();
+      showToast("Stock updated", "success");
+      if (window._invRefresh) window._invRefresh();
+    } catch(err) { showToast(`Error: ${err.message}`, "error"); }
+  };
 }

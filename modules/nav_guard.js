@@ -23,7 +23,7 @@ export function checkAccess(section, user) {
     "audit":()=>["admin","company_owner"].includes(user.role),
     "transfer_log":()=>["admin","company_owner","ceo","asset_manager"].includes(user.role),
     "onboarding":()=>["admin","company_owner"].includes(user.role),
-    "material_approvals":()=>["admin","company_owner","store_manager"].includes(user.role),
+    "material_approvals":()=>["admin", "store_manager"].includes(user.role),
   };
   return rules[section] ? rules[section]() : true;
 }

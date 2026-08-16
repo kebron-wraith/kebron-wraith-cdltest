@@ -1,6 +1,6 @@
 // CDL — modules/dashboards_am.js
 // Asset Manager: All sites stock, transfers, procurement queue. NO budget tab.
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SITES, LOGO_URL } from "../config.js";
+import { supabase, SITES, LOGO_URL } from "../config.js";
 import { initAIChat } from "./ai_chat.js";
 
 export async function renderAMDashboard(container, user) {
@@ -32,14 +32,14 @@ export async function renderAMDashboard(container, user) {
       </div>
     </div>`;
 
-  const [stock, transfers, procurement] = await Promise.all([
-    fetch(`${SUPABASE_URL}/rest/v1/stock?select=site_id,quantity,unit_price,material_name&limit=500`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
-    fetch(`${SUPABASE_URL}/rest/v1/transfers?status=in.(pending,source_pm_approved,dest_pm_approved,am_approved,in_transit)&select=*&limit=50`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
-    fetch(`${SUPABASE_URL}/rest/v1/procurement?status=in.(pm_approved,am_approved)&select=*&limit=50`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
+  const [stockRes, transRes, procRes] = await Promise.all([
+    supabase.from("stock").select("site_id,quantity,unit_price,material_name").limit(500),
+    supabase.from("transfers").select("*").in("status", ["pending", "source_pm_approved", "dest_pm_approved", "am_approved", "in_transit"]).limit(50),
+    supabase.from("procurement").select("*").in("status", ["pm_approved", "am_approved"]).limit(50),
   ]);
+  const stock = stockRes.data || [];
+  const transfers = transRes.data || [];
+  const procurement = procRes.data || [];
 
   const totalVal = stock.reduce((s,i)=>s+((i.quantity||0)*(i.unit_price||0)),0);
   const lowStock = stock.filter(i=>(i.quantity||0)<10&&(i.quantity||0)>0).length;

@@ -1,6 +1,6 @@
 // CDL — modules/dashboards_ceo.js
 // CEO: Sci-fi control center, company-wide pulse, approval queue
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SITES, LOGO_URL } from "../config.js";
+import { supabase, SITES, LOGO_URL } from "../config.js";
 import { callAI } from "./ai_engine.js";
 import { getSystemPrompt } from "./ai_roles.js";
 import { initAIChat } from "./ai_chat.js";
@@ -47,14 +47,14 @@ export async function renderCEODashboard(container, user) {
       </div>
     </div>`;
 
-  const [stock, procurement, transfers] = await Promise.all([
-    fetch(`${SUPABASE_URL}/rest/v1/stock?select=site_id,quantity,unit_price&limit=500`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
-    fetch(`${SUPABASE_URL}/rest/v1/procurement?status=in.(pending,pm_approved,am_approved)&select=*&limit=50`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
-    fetch(`${SUPABASE_URL}/rest/v1/transfers?status=in.(pending,source_pm_approved,dest_pm_approved)&select=id,status&limit=30`,
-      {headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}}).then(r=>r.json()).catch(()=>[]),
+  const [stockRes, procRes, transRes] = await Promise.all([
+    supabase.from("stock").select("site_id,quantity,unit_price").limit(500),
+    supabase.from("procurement").select("*").in("status", ["pending", "pm_approved", "am_approved"]).limit(50),
+    supabase.from("transfers").select("id,status").in("status", ["pending", "source_pm_approved", "dest_pm_approved"]).limit(30),
   ]);
+  const stock = stockRes.data || [];
+  const procurement = procRes.data || [];
+  const transfers = transRes.data || [];
 
   const totalVal = stock.reduce((s,i)=>s+((i.quantity||0)*(i.unit_price||0)),0);
   document.getElementById("ceo-kpis").innerHTML = [

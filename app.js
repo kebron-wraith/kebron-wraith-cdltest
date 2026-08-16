@@ -1,6 +1,6 @@
-// CDL Site Management v10 — app.js
+// CDL Site Management v11 — app.js
 // Main entry: auth, routing, navigation, modal/toast, 3D shell
-import { SUPABASE_URL, SUPABASE_ANON_KEY, APP_NAME, APP_VERSION, SITES } from "./config.js";
+import { supabase, APP_NAME, APP_VERSION, SITES } from "./config.js";
 import { ROLES } from "./modules/roles.js";
 import { checkAccess } from "./modules/nav_guard.js";
 import { logAudit } from "./modules/audit_core.js";
@@ -15,14 +15,22 @@ let currentUser = null;
 export function getCurrentUser() { return currentUser; }
 
 // ─── Boot ────────────────────────────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
-  const saved = localStorage.getItem("cdl_session");
-  if (saved) {
-    try { currentUser = JSON.parse(saved); showApp(); }
-    catch { showLoginScreen(); }
-  } else {
-    showLoginScreen();
+document.addEventListener("DOMContentLoaded", async () => {
+  // Check for existing Supabase session
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', user.id)
+        .eq('is_active', true)
+        .single();
+      if (profile) { currentUser = profile; showApp(); return; }
+    }
   }
+  showLoginScreen();
 });
 
 // ─── Login ───────────────────────────────────────────────────────────────────
@@ -35,23 +43,41 @@ function showLoginScreen() {
 
 async function handleLogin(email, password) {
   try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/users?email=eq.${encodeURIComponent(email)}&is_active=eq.true&limit=1`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
-    );
-    const users = await res.json();
-    if (!users.length) return "Invalid email or account inactive.";
-    const user = users[0];
-    // Check password - support both plain text and hashed
-    const storedPw = user.password_hash || user.password || user.pw || '';
-    if (storedPw !== password && storedPw !== '') return "Incorrect password.";
-    currentUser = user;
-    localStorage.setItem("cdl_session", JSON.stringify(user));
-    fetch(`${SUPABASE_URL}/rest/v1/users?id=eq.${user.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
-      body: JSON.stringify({ last_login: new Date().toISOString() })
+    // Use Supabase Auth - returns JWT session
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
     });
+
+    if (error) {
+      return error.message;
+    }
+
+    const { user } = data;
+    if (!user) return "Authentication failed.";
+
+    // Fetch user profile from users table to get role, name, site_ids
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', user.id)
+      .eq('is_active', true)
+      .single();
+
+    if (profileError || !profile) {
+      return "User profile not found or inactive.";
+    }
+
+    currentUser = profile;
+    // Session is automatically persisted by Supabase client
+    // No localStorage of user object needed
+
+    // Update last_login
+    await supabase
+      .from('users')
+      .update({ last_login: new Date().toISOString() })
+      .eq('id', user.id);
+
     await logAudit({ action: "user_login", module: "auth", reason: `Login from ${navigator.userAgent.slice(0, 60)}` });
     showApp();
     return null;
@@ -182,7 +208,7 @@ const NAV_ITEMS = [
   { key:"audit", icon:"◇", label:"Audit Log", adminOnly:true },
   { key:"transfer_log", icon:"📋", label:"Transfer Log", adminOnly:true },
   { key:"onboarding", icon:"✦", label:"Storekeeper Onboarding", adminOnly:true },
-  { key:"material_approvals", icon:"✓", label:"Material Approvals", adminOnly:true },
+  { key:"material_approvals", icon:"✓", label:"Material Approvals" },
 ];
 
 function buildNav(user, role) {
@@ -251,8 +277,13 @@ async function renderAuditLog(container, user) {
   </div><div id="audit-rows"><div class="spinner" style="margin:60px auto;"></div></div>`;
   let rows = [];
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/audit_log?order=timestamp.desc&limit=100`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
-    rows = await res.json();
+    const { data, error } = await supabase
+      .from('audit_log')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(100);
+    rows = data || [];
+    if (error) console.error('[AUDIT] fetch error:', error);
     if (!Array.isArray(rows)) rows = [];
   } catch (e) { console.error('[AUDIT] fetch failed', e); }
   const el = container ? container.querySelector("#audit-rows") : null;
@@ -316,4 +347,8 @@ function toggleNotifs() { const p = document.getElementById("notif-panel"); if (
 function toggleSidebar() { const s = document.getElementById("sidebar"); const o = document.getElementById("sidebar-overlay"); if (s && o) { s.classList.toggle("open"); o.classList.toggle("active"); } }
 function closeSidebar() { const s = document.getElementById("sidebar"); const o = document.getElementById("sidebar-overlay"); if (s && o) { s.classList.remove("open"); o.classList.remove("active"); } }
 
-function logout() { currentUser = null; localStorage.removeItem("cdl_session"); showLoginScreen(); }
+function logout() {
+  currentUser = null;
+  supabase.auth.signOut();
+  showLoginScreen();
+}

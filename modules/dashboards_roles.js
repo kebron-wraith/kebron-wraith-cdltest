@@ -1,7 +1,7 @@
 // CDL — modules/dashboards_roles.js
 // Premium dashboards for: store_manager, storekeeper_*, transfer_officer,
 // procurement_officer, data_holder, site_overseer, office_manager, engineer, admin
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SITES, LOGO_URL } from "../config.js";
+import { supabase, SITES, LOGO_URL } from "../config.js";
 import { ROLES } from "./roles.js";
 import { initAIChat } from "./ai_chat.js";
 import { MATERIALS_DB } from "../data.js";
@@ -34,13 +34,6 @@ function kpi(icon, value, label, color) {
   </div>`;
 }
 
-async function supaGet(path) {
-  try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
-    return r.ok ? await r.json() : [];
-  } catch { return []; }
-}
 
 function siteName(id) { return SITES.find(s => s.id === id)?.name || `#${id}`; }
 
@@ -67,10 +60,12 @@ async function renderStoreManager(container, user, role) {
   if (!container) return;
   let stock = [], grns = [];
   try {
-    [stock, grns] = await Promise.all([
-      supaGet("stock?select=site_id,quantity,unit_price,material_name,unit&limit=500"),
-      supaGet("grns?status=eq.pending&select=*&order=created_at.desc&limit=30"),
+    [stockRes, grnsRes] = await Promise.all([
+      supabase.from("stock").select("site_id,quantity,unit_price,material_name,unit").limit(500),
+      supabase.from("grns").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(30),
     ]);
+  const stock = stockRes.data || [];
+  const grns = grnsRes.data || [];
   } catch (e) { console.error('[SM] data fetch failed', e); }
   const low = stock.filter(i => (i.quantity || 0) < 10 && (i.quantity || 0) > 0);
   const val = stock.reduce((s, i) => s + ((i.quantity || 0) * (i.unit_price || 0)), 0);
@@ -220,7 +215,8 @@ async function renderStorekeeper(container, user, role) {
   shell(container, user, `Storekeeper · ${typeLabel}`, "GRN Scanner · Issue Requests · No AI");
   const skType = role.storekeeperType || "local";
   const siteParam = siteIds.length ? `site_id=in.(${siteIds.join(",")})&` : "";
-  const stock = await supaGet(`stock?${siteParam}storekeeper_type=eq.${skType}&limit=100`);
+  const stockRes = await supabase.from("stock").select("*").eq("storekeeper_type", skType).limit(100);
+  const stock = stockRes.data || [];
   container.querySelector("#dash-kpis").innerHTML = [
     kpi("📦", stock.length, "Items Tracked", "var(--accent-blue)"),
     kpi("⚠️", stock.filter(i => (i.quantity || 0) < 10).length, "Low Stock", "var(--accent-orange)"),
@@ -260,7 +256,8 @@ async function renderStorekeeper(container, user, role) {
 // ── TRANSFER OFFICER ─────────────────────────────────────────────────────────
 async function renderTransferOfficer(container, user, role) {
   shell(container, user, "Transfer Officer", "Active Transfers · Pickup & Delivery");
-  const transfers = await supaGet("transfers?status=in.(am_approved,preparing,picked_up,in_transit,delivered)&select=*&limit=50");
+  const transfersRes = await supabase.from("transfers").select("*").in("status", ["am_approved", "preparing", "picked_up", "in_transit", "delivered"]).limit(50);
+  const transfers = transfersRes.data || [];
   const active = transfers.filter(t => !["completed", "rejected"].includes(t.status));
   container.querySelector("#dash-kpis").innerHTML = [
     kpi("🚚", active.length, "Active Transfers", "var(--accent-blue)"),
@@ -306,7 +303,8 @@ async function renderTransferOfficer(container, user, role) {
 // ── PROCUREMENT OFFICER ──────────────────────────────────────────────────────
 async function renderProcurementOfficer(container, user, role) {
   shell(container, user, "Procurement Officer", "AM-Approved Purchase Requests");
-  const proc = await supaGet("procurement?status=eq.am_approved&select=*&order=created_at.desc&limit=50");
+  const procRes = await supabase.from("procurement").select("*").eq("status", "am_approved").order("created_at", { ascending: false }).limit(50);
+  const proc = procRes.data || [];
   container.querySelector("#dash-kpis").innerHTML = [
     kpi("🛒", proc.length, "Ready to Action", "var(--accent-orange)"),
     kpi("💰", `KES ${proc.reduce((s, p) => s + (p.total_amount || 0), 0).toLocaleString()}`, "Total Value", "var(--accent-gold)"),
@@ -351,7 +349,8 @@ async function renderProcurementOfficer(container, user, role) {
 // ── DATA HOLDER ──────────────────────────────────────────────────────────────
 async function renderDataHolder(container, user, role) {
   shell(container, user, "Data Holder", "GRN Verification · Discrepancy Flagging");
-  const grns = await supaGet("grns?status=eq.pending&select=*&order=created_at.desc&limit=30");
+  const grnsRes = await supabase.from("grns").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(30);
+  const grns = grnsRes.data || [];
   container.querySelector("#dash-kpis").innerHTML = [
     kpi("📦", grns.length, "GRNs to Verify", "var(--accent-blue)"),
   ].join("");
@@ -392,10 +391,12 @@ async function renderDataHolder(container, user, role) {
 // ── SITE OVERSEER ────────────────────────────────────────────────────────────
 async function renderSiteOverseer(container, user, role) {
   shell(container, user, "Site Overseer", "PM KPI Grid · Cross-Site Metrics");
-  const [requests, incidents] = await Promise.all([
-    supaGet("material_requests?select=site_id,status&limit=200"),
-    supaGet("incidents?select=site_id,status&limit=100"),
+  const [requestsRes, incidentsRes] = await Promise.all([
+    supabase.from("material_requests").select("site_id,status").limit(200),
+    supabase.from("incidents").select("site_id,status").limit(100),
   ]);
+  const requests = requestsRes.data || [];
+  const incidents = incidentsRes.data || [];
   container.querySelector("#dash-kpis").innerHTML = [
     kpi("📋", requests.length, "Total Requests", "var(--accent-blue)"),
     kpi("🚨", incidents.filter(i => i.status === "pending").length, "Open Incidents", "var(--accent-red)"),
@@ -445,10 +446,12 @@ async function renderAdminDash(container, user, role) {
   if (!container) return;
   let users = [], sites = [];
   try {
-    [users, sites] = await Promise.all([
-      supaGet("users?select=id,name,role,is_active,email&limit=200"),
-      supaGet("sites?select=id,name,is_active&limit=20"),
+    const [usersRes, sitesRes] = await Promise.all([
+      supabase.from("users").select("id,name,role,is_active,email").limit(200),
+      supabase.from("sites").select("id,name,is_active").limit(20),
     ]);
+    const users = usersRes.data || [];
+    const sites = sitesRes.data || [];
   } catch (e) { console.error('[ADMIN] data fetch failed', e); }
   const activeUsers = users.filter(u => u.is_active).length;
   const kpisEl = container.querySelector("#dash-kpis");

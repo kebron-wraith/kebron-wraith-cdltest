@@ -1,5 +1,5 @@
 // CDL — modules/transfers.js
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SITES } from "../config.js";
+import { supabase } from "../config.js";
 import { logAudit } from "./audit_core.js";
 import { ROLES } from "./roles.js";
 import { showToast, showModal, closeModal } from "../app.js";
@@ -27,11 +27,15 @@ export async function renderTransfers(container, user) {
 async function fetchTransfers(user,siteFilter,tab) {
   const list=document.getElementById("tf-list");if(!list)return;list.innerHTML=`<div class="spinner" style="margin:60px auto;"></div>`;
   const activeStatuses=["pending","pm_approved","preparing","in_transit","delivered"];
-  const statusFilter=tab==="active"?`status=in.(${activeStatuses.map(s=>`'${s}'`).join(",")})`:`status=eq.${tab}`;
-  let q=`${SUPABASE_URL}/rest/v1/transfers?${statusFilter}&select=*&order=created_at.desc&limit=50`;
+  let query = supabase.from('transfers').select('*').order('created_at', { ascending: false }).limit(50);
+  if (tab === 'active') {
+    query = query.in('status', activeStatuses);
+  } else {
+    query = query.eq('status', tab);
+  }
   try {
-    const res=await fetch(q,{headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}});const transfers=await res.json();
-    if(!transfers.length){list.innerHTML=`<div class="card" style="text-align:center;padding:40px;color:var(--text-300);">No ${tab} transfers</div>`;return;}
+    const { data: transfers, error } = await query;
+    if(!transfers?.length){list.innerHTML=`<div class="card" style="text-align:center;padding:40px;color:var(--text-300);">No ${tab} transfers</div>`;return;}
     list.innerHTML=transfers.map(tf=>{const fromSite=SITES.find(s=>s.id===tf.from_site_id)?.name||`Site ${tf.from_site_id}`;const toSite=SITES.find(s=>s.id===tf.to_site_id)?.name||`Site ${tf.to_site_id}`;const stepIdx=TRANSFER_STEPS.findIndex(s=>s.key===tf.status);const progress=stepIdx>=0?Math.round((stepIdx+1)/TRANSFER_STEPS.length*100):0;const items=Array.isArray(tf.items)?tf.items:[];const nextStep=TRANSFER_STEPS.find(s=>s.key===tf.status);const canAdvance=nextStep&&nextStep.roles.includes(user.role);return `<div class="card" style="margin-bottom:16px;"><div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;"><div><div style="font-size:14px;font-weight:600;color:var(--text-100);">${fromSite} → ${toSite}</div><div style="color:var(--text-300);font-size:12px;margin-top:4px;">${items.length} item(s) · Created ${tf.created_at?new Date(tf.created_at).toLocaleDateString("en-KE"):""}</div></div><span style="padding:4px 12px;border-radius:12px;font-size:12px;background:rgba(200,169,110,0.1);color:var(--gold);">${tf.status?.replace(/_/g," ")||"pending"}</span></div><div style="background:var(--bg-700);border-radius:4px;height:4px;margin-bottom:12px;"><div style="background:var(--gold);width:${progress}%;height:4px;border-radius:4px;transition:width 0.3s;"></div></div><div style="font-size:12px;color:var(--text-200);margin-bottom:12px;">${items.slice(0,3).map(i=>`${i.quantity||i.qty||"?"} ${i.unit||""} ${i.name||i.material_name||""}`).join(" · ")}${items.length>3?` +${items.length-3} more`:""}</div>${canAdvance&&tab==="active"?`<button onclick="window._tfAdvance('${tf.id}','${tf.status}')" class="btn btn-gold" style="font-size:12px;padding:8px 20px;">${tf.status==="preparing"?"📦 Confirm Stock Ready":"Advance → "+(TRANSFER_STEPS[Math.min(stepIdx+1,TRANSFER_STEPS.length-1)]?.label||"Complete")}</button>`:""}</div>`;}).join("");
     window._tfAdvance=(id,status)=>advanceTransferStep(id,status,user);
   } catch(err){list.innerHTML=`<p style="color:var(--red);">Error: ${err.message}</p>`;}
@@ -42,35 +46,32 @@ async function advanceTransferStep(id,currentStatus,user) {
   if(!nextStep){showToast("Transfer is already at final step","info");return;}
   try {
     if(nextStep.key==="completed"){await completeTransfer(id,user);return;}
-    const tfRes=await fetch(`${SUPABASE_URL}/rest/v1/transfers?id=eq.${id}&select=step_log`,{headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}});const [tf]=await tfRes.json();const stepLog=Array.isArray(tf?.step_log)?tf.step_log:[];stepLog.push({step:nextStep.key,by:user.name,role:user.role,at:new Date().toISOString()});
-    await fetch(`${SUPABASE_URL}/rest/v1/transfers?id=eq.${id}`,{method:"PATCH",headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`},body:JSON.stringify({status:nextStep.key,step_log:stepLog})});
+    const { data: tf, error } = await supabase.from('transfers').select('step_log').eq('id', id).single();
+    const stepLog=Array.isArray(tf?.step_log)?tf.step_log:[];stepLog.push({step:nextStep.key,by:user.name,role:user.role,at:new Date().toISOString()});
+    await supabase.from('transfers').update({status:nextStep.key,step_log:stepLog}).eq('id', id);
     await logAudit({action:"transfer_advanced",module:"transfers",record_id:id,before:{status:currentStatus},after:{status:nextStep.key}});showToast(`Transfer advanced to: ${nextStep.label}`,"success");
 // Send notifications based on transfer status
 if (nextStep.key === "pm_approved") {
   // Notify storekeeper at destination site to prepare stock
-  const tfRes = await fetch(`${SUPABASE_URL}/rest/v1/transfers?id=eq.${id}`,{headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}});
-  const [tf] = await tfRes.json();
+  const { data: tf } = await supabase.from('transfers').select('*').eq('id', id).single();
   if (tf) {
     // Get storekeepers for the destination site
-    const skRes = await fetch(`${SUPABASE_URL}/rest/v1/users?role=in.(storekeeper_local,storekeeper_import,storekeeper_scaffolding)&site_ids=cs.{%22${tf.to_site_id}%22}&is_active=eq.true&select=id,name`,{headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}});
-    const sks = await skRes.json();
+    const { data: sks } = await supabase.from('users').select('id,name').eq('role', 'storekeeper_local').or(`role.eq.storekeeper_import,role.eq.storekeeper_scaffolding`).eq('site_ids', `{"${tf.to_site_id}"}`).eq('is_active', true);
     if (Array.isArray(sks)) {
       for (const sk of sks) {
-        await sendNotif(sk.id, `���📋 Transfer Approved - Prepare Stock`, `Transfer ${tf.id?.slice(0,8)} from ${SITES.find(s=>s.id===tf.from_site_id)?.name||`Site ${tf.from_site_id}`} to ${SITES.find(s=>s.id===tf.to_site_id)?.name||`Site ${tf.to_site_id}`} is approved and ready for stock preparation`, "transfer_approved", id);
+        await sendNotif(sk.id, `📋 Transfer Approved - Prepare Stock`, `Transfer ${tf.id?.slice(0,8)} from ${SITES.find(s=>s.id===tf.from_site_id)?.name||`Site ${tf.from_site_id}`} to ${SITES.find(s=>s.id===tf.to_site_id)?.name||`Site ${tf.to_site_id}`} is approved and ready for stock preparation`, "transfer_approved", id);
       }
     }
   }
 } else if (nextStep.key === "delivered") {
   // Notify destination PM that transfer has arrived
-  const tfRes = await fetch(`${SUPABASE_URL}/rest/v1/transfers?id=eq.${id}`,{headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}});
-  const [tf] = await tfRes.json();
+  const { data: tf } = await supabase.from('transfers').select('*').eq('id', id).single();
   if (tf) {
     // Get project managers for the destination site
-    const pmRes = await fetch(`${SUPABASE_URL}/rest/v1/users?role=in.(project_manager,admin)&site_ids=cs.{%22${tf.to_site_id}%22}&is_active=eq.true&select=id,name`,{headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}});
-    const pms = await pmRes.json();
+    const { data: pms } = await supabase.from('users').select('id,name').eq('role', 'project_manager').or(`role.eq.admin`).eq('site_ids', `{"${tf.to_site_id}"}`).eq('is_active', true);
     if (Array.isArray(pms)) {
       for (const pm of pms) {
-        await sendNotif(pm.id, `���🚚 Transfer Delivered`, `Transfer ${tf.id?.slice(0,8)} from ${SITES.find(s=>s.id===tf.from_site_id)?.name||`Site ${tf.from_site_id}`} to ${SITES.find(s=>s.id===tf.to_site_id)?.name||`Site ${tf.to_site_id}`} has been delivered`, "transfer_delivered", id);
+        await sendNotif(pm.id, `🚚 Transfer Delivered`, `Transfer ${tf.id?.slice(0,8)} from ${SITES.find(s=>s.id===tf.from_site_id)?.name||`Site ${tf.from_site_id}`} to ${SITES.find(s=>s.id===tf.to_site_id)?.name||`Site ${tf.to_site_id}`} has been delivered`, "transfer_delivered", id);
       }
     }
   }
@@ -80,14 +81,31 @@ if (nextStep.key === "pm_approved") {
 
 async function completeTransfer(id,user) {
   try {
-    const tfRes=await fetch(`${SUPABASE_URL}/rest/v1/transfers?id=eq.${id}`,{headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}});const [tf]=await tfRes.json();if(!tf){showToast("Transfer not found","error");return;}
+    const { data: tf, error } = await supabase.from('transfers').select('*').eq('id', id).single();
+    if(!tf){showToast("Transfer not found","error");return;}
     const items=Array.isArray(tf.items)?tf.items:[];
     for(const item of items){const itemName=item.name||item.material_name;const itemQty=parseFloat(item.quantity||item.qty)||0;const itemUnit=item.unit||"Pcs";if(!itemName||itemQty<=0)continue;
-      const srcRes=await fetch(`${SUPABASE_URL}/rest/v1/stock?site_id=eq.${tf.from_site_id}&material_name=eq.${encodeURIComponent(itemName)}&limit=1`,{headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}});const srcArr=await srcRes.json();if(Array.isArray(srcArr)&&srcArr.length){const srcStock=srcArr[0];await fetch(`${SUPABASE_URL}/rest/v1/stock?id=eq.${srcStock.id}`,{method:"PATCH",headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`},body:JSON.stringify({quantity:Math.max(0,(srcStock.quantity||0)-itemQty),last_updated:new Date().toISOString(),updated_by:user.id})});}
-      const dstRes=await fetch(`${SUPABASE_URL}/rest/v1/stock?site_id=eq.${tf.to_site_id}&material_name=eq.${encodeURIComponent(itemName)}&limit=1`,{headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}});const dstArr=await dstRes.json();if(Array.isArray(dstArr)&&dstArr.length){const dstStock=dstArr[0];await fetch(`${SUPABASE_URL}/rest/v1/stock?id=eq.${dstStock.id}`,{method:"PATCH",headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`},body:JSON.stringify({quantity:(dstStock.quantity||0)+itemQty,last_updated:new Date().toISOString(),updated_by:user.id})});}else{await fetch(`${SUPABASE_URL}/rest/v1/stock`,{method:"POST",headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`,Prefer:"return=minimal"},body:JSON.stringify({site_id:tf.to_site_id,material_name:itemName,quantity:itemQty,unit:itemUnit,category:item.category||null,updated_by:user.id})});}
+      const { data: srcRes, error: srcErr } = await supabase.from('stock').select('*').eq('site_id', tf.from_site_id).eq('material_name', itemName).limit(1);
+      if (srcErr) throw srcErr;
+      if (Array.isArray(srcRes.data) && srcRes.data.length) {
+        const srcStock = srcRes.data[0];
+        const { error: updErr } = await supabase.from('stock').update({ quantity: Math.max(0, (srcStock.quantity || 0) - itemQty), last_updated: new Date().toISOString(), updated_by: user.id }).eq('id', srcStock.id);
+        if (updErr) throw updErr;
+      }
+      const { data: dstRes, error: dstErr } = await supabase.from('stock').select('*').eq('site_id', tf.to_site_id).eq('material_name', itemName).limit(1);
+      if (dstErr) throw dstErr;
+      if (Array.isArray(dstRes.data) && dstRes.data.length) {
+        const dstStock = dstRes.data[0];
+        const { error: updErr2 } = await supabase.from('stock').update({ quantity: (dstStock.quantity || 0) + itemQty, last_updated: new Date().toISOString(), updated_by: user.id }).eq('id', dstStock.id);
+        if (updErr2) throw updErr2;
+      } else {
+        const { error: insErr } = await supabase.from('stock').insert({ site_id: tf.to_site_id, material_name: itemName, quantity: itemQty, unit: itemUnit, category: item.category || null, updated_by: user.id });
+        if (insErr) throw insErr;
+      }
     }
     const stepLog=Array.isArray(tf.step_log)?tf.step_log:[];stepLog.push({step:"completed",by:user.name,role:user.role,at:new Date().toISOString()});
-    await fetch(`${SUPABASE_URL}/rest/v1/transfers?id=eq.${id}`,{method:"PATCH",headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`},body:JSON.stringify({status:"completed",step_log:stepLog,completed_at:new Date().toISOString()})});
+    const { error: updErr3 } = await supabase.from('transfers').update({status:"completed",step_log:stepLog,completed_at:new Date().toISOString()}).eq('id', id);
+    if (updErr3) throw updErr3;
     await logAudit({action:"transfer_completed",module:"transfers",record_id:id,after:{from:tf.from_site_id,to:tf.to_site_id,items:items.length}});showToast(`Transfer completed — ${items.length} item(s) moved`,"success");
   } catch(err){showToast(`Error: ${err.message}`,"error");}
 }
@@ -101,7 +119,7 @@ function openNewTransferModal(user,siteFilter) {
   const sites=SITES.filter(s=>siteFilter.includes(s.id));
   showModal(`<h2 style="margin-bottom:20px;">New Material Transfer</h2><div style="display:flex;flex-direction:column;gap:16px;"><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"><div><label style="color:var(--text-300);font-size:12px;text-transform:uppercase;">From Site</label><select id="tf-from" style="width:100%;margin-top:6px;background:var(--bg-700);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text-100);">${sites.map(s=>`<option value="${s.id}">${s.name}</option>`).join("")}</select></div><div><label style="color:var(--text-300);font-size:12px;text-transform:uppercase;">To Site</label><select id="tf-to" style="width:100%;margin-top:6px;background:var(--bg-700);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text-100);">${sites.map(s=>`<option value="${s.id}">${s.name}</option>`).join("")}</select></div></div><div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><label style="color:var(--text-300);font-size:12px;text-transform:uppercase;">Items</label><button onclick="window._tfAddItem()" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 12px;color:var(--gold);cursor:pointer;font-size:12px;">+ Add</button></div><div id="tf-items-list"></div></div><div><label style="color:var(--text-300);font-size:12px;text-transform:uppercase;">Notes</label><textarea id="tf-notes" rows="2" style="width:100%;margin-top:6px;background:var(--bg-700);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text-100);resize:none;"></textarea></div><div style="display:flex;gap:12px;"><button onclick="window._tfSubmit()" class="btn btn-gold" style="flex:1;">Submit Transfer Request</button><button onclick="window._closeModal()" class="btn btn-ghost">Cancel</button></div></div>`);
   renderItems();
-  window._tfSubmit=async()=>{const fromSite=parseInt(document.getElementById("tf-from").value);const toSite=parseInt(document.getElementById("tf-to").value);const notes=document.getElementById("tf-notes").value.trim();if(fromSite===toSite){showToast("From and To sites must be different","error");return;}const validItems=items.filter(i=>i.name.trim());if(!validItems.length){showToast("Add at least one item","error");return;}try{const res=await fetch(`${SUPABASE_URL}/rest/v1/transfers`,{method:"POST",headers:{"Content-Type":"application/json",apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`,Prefer:"return=representation"},body:JSON.stringify({from_site_id:fromSite,to_site_id:toSite,items:validItems,notes,status:"pending",step_log:[{step:"created",by:user.name,role:user.role,at:new Date().toISOString()}]})});if(!res.ok) throw new Error(await res.text());const [saved]=await res.json();await logAudit({action:"transfer_created",module:"transfers",record_id:saved.id});closeModal();showToast("Transfer request submitted","success");}catch(err){showToast(`Error: ${err.message}`,"error");}};
+  window._tfSubmit=async()=>{const fromSite=parseInt(document.getElementById("tf-from").value);const toSite=parseInt(document.getElementById("tf-to").value);const notes=document.getElementById("tf-notes").value.trim();if(fromSite===toSite){showToast("From and To sites must be different","error");return;}const validItems=items.filter(i=>i.name.trim());if(!validItems.length){showToast("Add at least one item","error");return;}try{const { data: saved, error } = await supabase.from('transfers').insert({from_site_id:fromSite,to_site_id:toSite,items:validItems,notes,status:"pending",step_log:[{step:"created",by:user.name,role:user.role,at:new Date().toISOString()}]}, {select: '*'});if(error) throw error;await logAudit({action:"transfer_created",module:"transfers",record_id:saved.id});closeModal();showToast("Transfer request submitted","success");}catch(err){showToast(`Error: ${err.message}`,"error");}};
 }
 
 // ── Feature 2: Standardized Inter-Site Transfer Log ────────────
@@ -140,12 +158,12 @@ async function loadTransferLog() {
   if (!el) return;
   el.innerHTML = `<div class="spinner" style="margin:60px auto;"></div>`;
   let transfers = [];
-  let url = `${SUPABASE_URL}/rest/v1/transfers?select=*&order=created_at.desc&limit=200`;
-  if (statusVal && statusVal !== "all") url += `&status=eq.${statusVal}`;
   try {
-    const res = await fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } });
-    const arr = await res.json();
-    if (Array.isArray(arr)) transfers = arr;
+    let query = supabase.from('transfers').select('*').order('created_at', { ascending: false }).limit(200);
+    if (statusVal && statusVal !== "all") query = query.eq('status', statusVal);
+    const { data, error } = await query;
+    if (error) throw error;
+    if (Array.isArray(data)) transfers = data;
   } catch (err) {
     console.error("[TransferLog]", err);
     el.innerHTML = `<p style="color:var(--red);padding:20px;">Error: ${err.message}</p>`;
