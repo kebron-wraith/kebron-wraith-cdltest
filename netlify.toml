@@ -1,0 +1,15 @@
+[build]
+  publish = "."
+  command = "npm run build"
+
+[functions]
+  directory = ".netlify/functions"
+
+[[redirects]]
+  from = "/rest/v1/*"
+  to = "/.netlify/functions/rest-v1"
+  status = 200
+  force = true
+
+[functions.backup_daily]
+  schedule = "0 0 * * *"

@@ -1,0 +1,36 @@
+{
+  "name": "cdl-final",
+  "version": "1.0.0",
+  "description": "**Canaan Developers Ltd · Nairobi, Kenya · Built by Kebron Isaias**",
+  "main": "app.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "echo 'static site — no build step needed'",
+    "lint": "echo 'No linter configured'",
+    "start": "npx serve .",
+    "preview": "npx serve .",
+    "deploy": "npx netlify deploy --prod --dir=. --message \"deploy\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kebroncanaanstore-dev/cdl-management.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/kebroncanaanstore-dev/cdl-management/issues"
+  },
+  "homepage": "https://github.com/kebroncanaanstore-dev/cdl-management#readme",
+  "dependencies": {
+    "@playwright/test": "^1.60.0",
+    "adm-zip": "^0.6.0",
+    "archiver": "^8.0.0",
+    "pg": "^8.21.0"
+  }
+}

@@ -1,0 +1,20 @@
+// CDL — modules/scheduler.js
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../config.js";
+import { logAudit } from "./audit_core.js";
+let _user = null;
+export function initScheduler(user) { _user = user; runScheduler(); setInterval(runScheduler, 60 * 1000); }
+async function runScheduler() {
+  const now = new Date(); const h = now.getHours(); const m = now.getMinutes(); const day = now.getDay();
+  if (h === 0 && m === 0) await expireOldRequests();
+  if (day === 6 && h === 14 && m === 0) await generateWeeklySummary();
+  if (day === 1 && h === 7 && m === 0) await sendLowStockAlerts();
+}
+async function expireOldRequests() {
+  try { const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(); const res = await fetch(`${SUPABASE_URL}/rest/v1/material_requests?status=eq.pending&created_at=lt.${cutoff}&select=id`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }); const expired = await res.json(); if (!expired.length) return; const ids = expired.map(r => r.id).join(","); await fetch(`${SUPABASE_URL}/rest/v1/material_requests?id=in.(${ids})`, { method: "PATCH", headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }, body: JSON.stringify({ status: "expired", expiry_at: new Date().toISOString() }) }); await logAudit({ action: "scheduler_expire_requests", module: "scheduler", after: { count: expired.length }, reason: "Auto-expired after 7 days" }); } catch {}
+}
+async function generateWeeklySummary() {
+  try { const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(); const [grns, requests, incidents] = await Promise.all([fetch(`${SUPABASE_URL}/rest/v1/grns?created_at=gte.${weekAgo}&select=total_value,status`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }).then(r => r.json()), fetch(`${SUPABASE_URL}/rest/v1/material_requests?created_at=gte.${weekAgo}&select=status`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }).then(r => r.json()), fetch(`${SUPABASE_URL}/rest/v1/incidents?created_at=gte.${weekAgo}&select=estimated_value,type`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }).then(r => r.json())]); const summary = { week_ending: new Date().toISOString(), grns_received: grns.length, grns_value: grns.reduce((s, g) => s + (g.total_value || 0), 0), requests_total: requests.length, requests_fulfilled: requests.filter(r => ["issued", "completed"].includes(r.status)).length, incidents: incidents.length, incident_value: incidents.reduce((s, i) => s + (i.estimated_value || 0), 0) }; localStorage.setItem("cdl_weekly_summary", JSON.stringify(summary)); await logAudit({ action: "scheduler_weekly_summary", module: "scheduler", after: summary }); } catch {}
+}
+async function sendLowStockAlerts() {
+  try { const res = await fetch(`${SUPABASE_URL}/rest/v1/stock?quantity=lt.10&quantity=gt.0&select=site_id,material_name,quantity,unit&limit=50`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }); const lowItems = await res.json(); if (!lowItems.length) return; const usersRes = await fetch(`${SUPABASE_URL}/rest/v1/users?role=in.(asset_manager,company_owner,store_manager)&is_active=eq.true&select=id`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }); const managers = await usersRes.json(); for (const mgr of managers) { await fetch(`${SUPABASE_URL}/rest/v1/notifications`, { method: "POST", headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, Prefer: "return=minimal" }, body: JSON.stringify({ user_id: mgr.id, title: `⚠ Low Stock Alert: ${lowItems.length} items`, body: `${lowItems.slice(0, 3).map(i => `${i.material_name}: ${i.quantity} ${i.unit}`).join(", ")}${lowItems.length > 3 ? ` +${lowItems.length - 3} more` : ""}`, type: "low_stock" }) }); } await logAudit({ action: "scheduler_low_stock_alerts", module: "scheduler", after: { count: lowItems.length, notified: managers.length } }); } catch {}
+}

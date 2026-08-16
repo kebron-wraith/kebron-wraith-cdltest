@@ -1,0 +1,25 @@
+# Supabase secrets — never commit
+.env.supabase
+.env
+.env.local
+*.env
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.claude/settings.local.json
+
+# Node (if ever added)
+node_modules/
+dist/
+
+# Playwright / test artifacts
+playwright-report/
+test-results/
+e2e-failure-screenshot.png
+
+# Local Netlify folder
+.netlify

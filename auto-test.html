@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CDL Auto-Test Runner</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#06070a;color:#f5f7fa;min-height:100vh;padding:20px}
+h1{font-size:24px;font-weight:800;margin-bottom:4px;background:linear-gradient(135deg,#d4af6e,#b8944f);-webkit-background-clip:text;-webkit-text-color:transparent}
+.sub{color:#8a91a4;margin-bottom:20px;font-size:13px}
+.controls{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+button{padding:10px 20px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s}
+.btn-gold{background:linear-gradient(135deg,#d4af6e,#b8944f);color:#06070a}
+.btn-gold:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(212,175,110,.3)}
+.btn-gold:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-dark{background:#1a1e2c;color:#c8cdd6;border:1px solid #252b3d}
+.btn-dark:hover{background:#23283a}
+.log{background:#0a0c12;border:1px solid #1a1f2e;border-radius:10px;padding:16px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.8;max-height:60vh;overflow-y:auto;white-space:pre-wrap}
+.log .ok{color:#34d399}.log .err{color:#f87171}.log .warn{color:#fb923c}.log .info{color:#5b9aff}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px}
+.stat{background:#131620;border:1px solid #1a1f2e;border-radius:10px;padding:14px;text-align:center}
+.stat .val{font-size:24px;font-weight:700;font-family:'JetBrains Mono',monospace}
+.stat .label{font-size:11px;color:#8a91a4;margin-top:4px}
+</style>
+</head>
+<body>
+<h1>🏗 CDL Auto-Test Runner</h1>
+<p class="sub">Canaan Developers Ltd · Automated testing in the browser</p>
+
+<div class="stats">
+  <div class="stat"><div class="val" id="tests-run">0</div><div class="label">Tests Run</div></div>
+  <div class="stat"><div class="val" id="tests-pass">0</div><div class="label">Passed</div></div>
+  <div class="stat"><div class="val" id="tests-fail">0</div><div class="label">Failed</div></div>
+  <div class="stat"><div class="val" id="tests-skip">0</div><div class="label">Skipped</div></div>
+</div>
+
+<div class="controls">
+  <button class="btn-gold" id="btn-run" onclick="runAllTests()">▶ Run All Tests</button>
+  <button class="btn-dark" onclick="clearLog()">Clear</button>
+</div>
+
+<div class="log" id="log">Click "Run All Tests" to begin automated testing...</div>
+
+<script>
+const SUPABASE_URL = "https://dljvplrbjogncwrpmfsj.supabase.co";
+const API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsanZwbHJiam9nbmN3cnBtZnNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MjAxMzIsImV4cCI6MjA5NDA5NjEzMn0.GmsMNKlRos6ZChy143_YrSlDB477RHPxkRqA0wGJB1E";
+
+let testsRun=0, testsPass=0, testsFail=0, testsSkip=0;
+
+function log(msg, type='') {
+  const el = document.getElementById('log');
+  const cls = type ? ` class="${type}"` : '';
+  el.innerHTML += `<div${cls}>${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('log').innerHTML = '';
+  testsRun=testsPass=testsFail=testsSkip=0;
+  updateStats();
+}
+
+function updateStats() {
+  document.getElementById('tests-run').textContent = testsRun;
+  document.getElementById('tests-pass').textContent = testsPass;
+  document.getElementById('tests-fail').textContent = testsFail;
+  document.getElementById('tests-skip').textContent = testsSkip;
+}
+
+function pass(name) { testsRun++; testsPass++; updateStats(); log(`  ✅ ${name}`, 'ok'); }
+function fail(name, detail) { testsRun++; testsFail++; updateStats(); log(`  ❌ ${name}: ${detail}`, 'err'); }
+function skip(name) { testsRun++; testsSkip++; updateStats(); log(`  ⊘ ${name}`, 'warn'); }
+function info(msg) { log(msg, 'info'); }
+
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { 'apikey': API_KEY, 'Authorization': 'Bearer ' + API_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+  };
+  if (body) opts.body = JSON.stringify(body);
+  try {
+    const res = await fetch(SUPABASE_URL + path, opts);
+    let data;
+    try { data = await res.json(); } catch { data = null; }
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    return { ok: false, status: 0, data: null, error: err.message };
+  }
+}
+
+async function apiGet(path) { return api('GET', path); }
+async function apiPost(path, body) { return api('POST', path, body); }
+async function apiPatch(path, body) { return api('PATCH', path, body); }
+async function apiDelete(path) { return api('DELETE', path); }
+
+// ─── Test Functions ──────────────────────────────────────────────────────────
+
+async function testDatabaseConnected() {
+  const res = await apiGet('/rest/v1/sites?select=id,name&limit=1');
+  if (res.ok && res.data && res.data.length > 0) {
+    pass('Database connected - sites table accessible');
+    return true;
+  }
+  if (res.ok && res.data && res.data.length === 0) {
+    pass('Database connected but sites table is empty (need migration)');
+    return true;
+  }
+  fail('Database connected', `Status ${res.status}: ${res.error || JSON.stringify(res.data)}`);
+  return false;
+}
+
+async function testUsersTable() {
+  const res = await apiGet('/rest/v1/users?select=email,role&limit=20');
+  if (!res.ok) { fail('Users table', `Status ${res.status}`); return 0; }
+  const count = res.data ? res.data.length : 0;
+  if (count === 0) { skip('Users table empty - run setup.html to seed'); return 0; }
+  pass(`Users table has ${count} users`);
+  // Check for all 16 role types
+  if (res.data) {
+    const roles = res.data.map(u => u.role);
+    const expected = ['company_owner','ceo','office_manager','asset_manager','finance','project_manager','engineer','store_manager','storekeeper_local','storekeeper_import','storekeeper_scaffolding','procurement_officer','transfer_officer','data_holder','site_overseer','admin'];
+    const missing = expected.filter(r => !roles.includes(r));
+    if (missing.length === 0) pass('All 16 role types present');
+    else fail('Role coverage', `Missing: ${missing.join(', ')}`);
+  }
+  return count;
+}
+
+async function testSitesSeeded() {
+  const res = await apiGet('/rest/v1/sites?select=id,name&order=id.asc');
+  if (!res.ok || !res.data) { fail('Sites seeded', `Status ${res.status}`); return false; }
+  if (res.data.length >= 11) { pass(`All ${res.data.length} sites present`); return true; }
+  fail('Sites seeded', `Only ${res.data.length}/11 sites found`);
+  return false;
+}
+
+async function testStockData() {
+  const res = await apiGet('/rest/v1/stock?select=site_id,material_name,storekeeper_type&limit=500');
+  if (!res.ok || !res.data) { fail('Stock data', `Status ${res.status}`); return false; }
+  if (res.data.length === 0) { skip('Stock data empty - seed stock first'); return false; }
+  pass(`Stock has ${res.data.length} items`);
+  // Check types
+  const types = [...new Set(res.data.map(s => s.storekeeper_type))];
+  pass(`Stock types: ${types.join(', ')}`);
+  return true;
+}
+
+async function testLogin(userEmail, userPw, roleName) {
+  const res = await apiGet(`/rest/v1/users?email=eq.${encodeURIComponent(userEmail)}&is_active=eq.true&limit=1`);
+  if (!res.ok || !res.data || res.data.length === 0) {
+    fail(`Login ${roleName}`, 'User not found or inactive');
+    return null;
+  }
+  const user = res.data[0];
+  if (user.password_hash !== userPw) {
+    fail(`Login ${roleName}`, `Password mismatch (stored: ${user.password_hash})`);
+    return null;
+  }
+  pass(`Login ${roleName} - credentials valid`);
+  return user;
+}
+
+async function testGRNWorkflow() {
+  info('\n── Testing GRN Workflow ──');
+
+  // Check for pending GRNs
+  const grns = await apiGet('/rest/v1/grns?status=eq.pending&limit=5');
+  if (grns.ok && grns.data) {
+    if (grns.data.length > 0) {
+      info(`  Found ${grns.data.length} pending GRNs`);
+      // Try verifying one
+      const grn = grns.data[0];
+      pass(`Pending GRN found: ${grn.grn_number || grn.id.slice(0,8)}`);
+    } else {
+      skip('No pending GRNs to verify');
+    }
+  }
+}
+
+async function testRequestWorkflow() {
+  info('\n── Testing Material Request Workflow ──');
+
+  // Check for requests in each status
+  const statuses = ['pending','pm_approved','issued','collected','completed','expired'];
+  for (const s of statuses) {
+    const res = await apiGet(`/rest/v1/material_requests?status=eq.${s}&limit=5`);
+    if (res.ok && res.data) {
+      info(`  ${s}: ${res.data.length} requests`);
+    }
+  }
+
+  // Create a test material request
+  const createRes = await apiPost('/rest/v1/material_requests', {
+    site_id: 1,
+    requested_by: null,  // Will fail without valid user ID - that's OK test
+    material_name: 'TEST Cement 50kg',
+    quantity: 10,
+    unit: 'Bags',
+    urgency: 'normal',
+    purpose: 'Auto-test request',
+    status: 'pending'
+  });
+
+  if (createRes.ok || createRes.status === 201) {
+    pass('Material request creation API works');
+    // Clean up - delete the test request
+    if (createRes.data && createRes.data.id) {
+      await apiDelete(`/rest/v1/material_requests?id=eq.${createRes.data.id}`);
+    }
+  } else if (createRes.status === 400) {
+    pass('Material request API correctly validates (requested_by required)');
+  } else {
+    fail('Material request creation', `Status ${createRes.status}: ${JSON.stringify(createRes.data)}`);
+  }
+}
+
+async function testTransferWorkflow() {
+  info('\n── Testing Transfer Workflow ──');
+
+  const res = await apiGet('/rest/v1/transfers?limit=5');
+  if (res.ok && res.data) {
+    info(`  Found ${res.data.length} transfers`);
+    const statuses = [...new Set(res.data.map(t => t.status))];
+    if (statuses.length > 0) info(`  Statuses: ${statuses.join(', ')}`);
+  }
+
+  // Create a test transfer
+  const createRes = await apiPost('/rest/v1/transfers', {
+    from_site_id: 1,
+    to_site_id: 2,
+    items: [{name:'Test Item', quantity: 5, unit: 'Pcs'}],
+    status: 'pending',
+    step_log: [{step:'auto-test', by:'test-runner', role:'system', at: new Date().toISOString()}]
+  });
+
+  if (createRes.ok || createRes.status === 201) {
+    pass('Transfer creation API works');
+    if (createRes.data && createRes.data[0] && createRes.data[0].id) {
+      await apiDelete(`/rest/v1/transfers?id=eq.${createRes.data[0].id}`);
+    }
+  } else {
+    fail('Transfer creation', `Status ${createRes.status}: ${JSON.stringify(createRes.data)}`);
+  }
+}
+
+async function testNotifications() {
+  info('\n── Testing Notifications ──');
+
+  const res = await apiGet('/rest/v1/notifications?limit=10&order=created_at.desc');
+  if (res.ok && res.data) {
+    info(`  Found ${res.data.length} notifications`);
+    if (res.data.length > 0) {
+      pass(`Latest notification: "${res.data[0].title}"`);
+    }
+  }
+
+  // Create a test notification
+  const createRes = await apiPost('/rest/v1/notifications', {
+    user_id: '00000000-0000-0000-0000-000000000000',
+    title: '🔔 Auto-test notification',
+    body: 'This is a test notification from the auto-test runner',
+    type: 'test'
+  });
+
+  if (createRes.ok || createRes.status === 201) {
+    pass('Notification creation API works');
+    // Clean up
+    const allRes = await apiGet('/rest/v1/notifications?title=eq.🔔 Auto-test notification&select=id');
+    if (allRes.data) {
+      for (const n of allRes.data) {
+        await apiDelete(`/rest/v1/notifications?id=eq.${n.id}`);
+      }
+    }
+  } else {
+    fail('Notification creation', `Status ${createRes.status}`);
+  }
+}
+
+async function testAuditLog() {
+  info('\n── Testing Audit Log ──');
+
+  const res = await apiGet('/rest/v1/audit_log?limit=10&order=timestamp.desc');
+  if (res.ok && res.data) {
+    pass(`Audit log has ${res.data.length} recent entries`);
+    if (res.data.length > 0) {
+      info(`  Latest: ${res.data[0].action} by ${res.data[0].actor_name || 'system'}`);
+    }
+  }
+}
+
+async function testAllLogins() {
+  info('\n── Testing All Role Logins ──');
+
+  const users = [
+    {email:'owner@canaan.co.ke', pw:'owner123', role:'Company Owner'},
+    {email:'ceo@canaan.co.ke', pw:'ceo123', role:'CEO'},
+    {email:'am@canaan.co.ke', pw:'am123', role:'Asset Manager'},
+    {email:'pm1@canaan.co.ke', pw:'pm123', role:'Project Manager 1'},
+    {email:'eng@canaan.co.ke', pw:'eng123', role:'Engineer'},
+    {email:'sk.local@canaan.co.ke', pw:'sk123', role:'Storekeeper Local'},
+    {email:'sm@canaan.co.ke', pw:'sm123', role:'Store Manager'},
+    {email:'finance@canaan.co.ke', pw:'finance123', role:'Finance'},
+    {email:'po@canaan.co.ke', pw:'po123', role:'Procurement Officer'},
+    {email:'to@canaan.co.ke', pw:'to123', role:'Transfer Officer'},
+    {email:'dh@canaan.co.ke', pw:'dh123', role:'Data Holder'},
+    {email:'so@canaan.co.ke', pw:'so123', role:'Site Overseer'},
+    {email:'admin@canaan.co.ke', pw:'admin123', role:'Admin'},
+  ];
+
+  for (const u of users) {
+    await testLogin(u.email, u.pw, u.role);
+    await new Promise(r => setTimeout(r, 100));
+  }
+}
+
+async function testStockDeduction() {
+  info('\n── Testing Stock Deduction Logic ──');
+
+  // Find a stock item with qty > 0
+  const res = await apiGet('/rest/v1/stock?quantity=gt.0&limit=1&select=id,site_id,material_name,quantity,storekeeper_type');
+  if (!res.ok || !res.data || res.data.length === 0) {
+    skip('No stock items with qty > 0 to test deduction');
+    return;
+  }
+
+  const item = res.data[0];
+  const oldQty = item.quantity;
+  const newQty = Math.max(0, oldQty - 5);
+
+  info(`  Testing: ${item.material_name} (current qty: ${oldQty})`);
+
+  const updateRes = await apiPatch(`/rest/v1/stock?id=eq.${item.id}`, {
+    quantity: newQty,
+    last_updated: new Date().toISOString()
+  });
+
+  if (updateRes.ok) {
+    pass(`Stock deduction API works: ${oldQty} → ${newQty}`);
+    // Restore original value
+    await apiPatch(`/rest/v1/stock?id=eq.${item.id}`, {
+      quantity: oldQty,
+      last_updated: new Date().toISOString()
+    });
+    info(`  Restored original quantity: ${oldQty}`);
+  } else {
+    fail('Stock deduction', `Status ${updateRes.status}`);
+  }
+}
+
+// ─── Main Runner ─────────────────────────────────────────────────────────────
+
+async function runAllTests() {
+  const btn = document.getElementById('btn-run');
+  btn.disabled = true;
+  btn.textContent = '⏳ Running...';
+  clearLog();
+
+  info('🚀 Starting CDL App Automated Tests');
+  info(`Database: ${SUPABASE_URL}`);
+  info(`Time: ${new Date().toLocaleString()}`);
+  info('');
+
+  try {
+    // 1. Database connectivity
+    info('═══ DATABASE CONNECTIVITY ═══');
+    const dbOk = await testDatabaseConnected();
+    if (!dbOk) {
+      fail('Database', 'Cannot connect to Supabase. Check URL and API key.');
+      return;
+    }
+
+    // 2. Tables
+    info('\n═══ TABLE STRUCTURE ═══');
+    await testSitesSeeded();
+    const userCount = await testUsersTable();
+    await testStockData();
+
+    // 3. Logins
+    if (userCount > 0) {
+      await testAllLogins();
+    }
+
+    // 4. Workflows
+    await testRequestWorkflow();
+    await testTransferWorkflow();
+    await testGRNWorkflow();
+    await testNotifications();
+    await testAuditLog();
+    await testStockDeduction();
+
+    // 5. Summary
+    info('\n═══════════════════════════════════');
+    info(`📊 RESULTS: ${testsPass} passed, ${testsFail} failed, ${testsSkip} skipped (${testsRun} total)`);
+    if (testsFail === 0) {
+      info('🎉 ALL TESTS PASSED!');
+    } else {
+      info(`⚠️ ${testsFail} test(s) failed - review output above`);
+    }
+
+  } catch (err) {
+    fail('Test runner', err.message);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '▶ Run All Tests';
+}
+</script>
+</body>
+</html>

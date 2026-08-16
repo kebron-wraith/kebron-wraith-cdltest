@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CDL Full E2E Test</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #06070a; color: #f5f7fa; padding: 16px; font-size: 14px; }
+h1 { font-size: 22px; font-weight: 800; background: linear-gradient(135deg, #d4af6e, #b8944f); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 4px; }
+.sub { color: #8a91a4; font-size: 13px; margin-bottom: 16px; }
+.controls { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+button { padding: 10px 20px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s; }
+.btn-gold { background: linear-gradient(135deg, #d4af6e, #b8944f); color: #06070a; }
+.btn-gold:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(212,175,110,.3); }
+.btn-gold:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+.btn-dark { background: #1a1e2c; color: #c8cdd6; border: 1px solid #252b3d; }
+.btn-dark:hover { background: #23283a; }
+.btn-ok { background: #065f46; color: #d1fae5; }
+.btn-err { background: #7f1d1d; color: #fecaca; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+.stat { background: #131620; border: 1px solid #1a1f2e; border-radius: 10px; padding: 12px; text-align: center; }
+.stat .val { font-size: 28px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.stat .label { font-size: 10px; color: #8a91a4; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+.log { background: #0a0c12; border: 1px solid #1a1f2e; border-radius: 10px; padding: 14px; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.7; max-height: 55vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+.log .ok { color: #34d399; }
+.log .err { color: #f87171; }
+.log .warn { color: #fb923c; }
+.log .info { color: #5b9aff; }
+</style>
+</head>
+<body>
+<h1>🏗 CDL Full E2E Test Suite</h1>
+<p class="sub">Canaan Developers Ltd · Automated role testing &amp; workflow verification</p>
+
+<div class="stats">
+  <div class="stat"><div class="val" id="s-run">0</div><div class="label">Run</div></div>
+  <div class="stat"><div class="val" id="s-pass" style="color:#34d399">0</div><div class="label">Passed</div></div>
+  <div class="stat"><div class="val" id="s-fail" style="color:#f87171">0</div><div class="label">Failed</div></div>
+  <div class="stat"><div class="val" id="s-skip" style="color:#fb923c">0</div><div class="label">Skipped</div></div>
+</div>
+
+<div class="controls">
+  <button class="btn-gold" id="btn-run" onclick="runTests()">▶ Run All Tests</button>
+  <button class="btn-dark" onclick="clearLog()">Clear</button>
+  <button class="btn-ok" id="btn-seed" onclick="seedData()">🌱 Seed Data</button>
+  <span id="status-text" style="color:#8a91a4;font-size:12px;margin-left:8px;"></span>
+</div>
+
+<div class="log" id="log">Ready. Click "Run All Tests" to begin, or "Seed Data" to populate the database first.</div>
+
+<script>
+let RUN = 0, PASS = 0, FAIL = 0, SKIP = 0, TOTAL = 0;
+function upd() {
+  document.getElementById('s-run').textContent = TOTAL;
+  document.getElementById('s-pass').textContent = PASS;
+  document.getElementById('s-fail').textContent = FAIL;
+  document.getElementById('s-skip').textContent = SKIP;
+}
+function log(m, t) { const e = document.getElementById('log'); e.innerHTML += '<div class="' + (t || '') + '">' + m + '</div>'; e.scrollTop = e.scrollHeight; }
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+function ok(m) { TOTAL++; PASS++; upd(); log('  ✅ ' + m, 'ok'); }
+function err(m) { TOTAL++; FAIL++; upd(); log('  ❌ ' + m, 'err'); }
+function skip(m) { TOTAL++; SKIP++; upd(); log('  ⊘ ' + m, 'warn'); }
+function info(m) { TOTAL++; upd(); log('  ℹ ' + m, 'info'); }
+function section(m) { log('\n━━━ ' + m + ' ━━━', 'info'); }
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Supabase config from app
+const SUPABASE_URL = 'https://dljvplrbjogncwrpmfsj.supabase.co';
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsanZwbHJiam9nbmN3cnBtZnNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MjAxMzIsImV4cCI6MjA5NDA5NjEzMn0.GmsMNKlRos6ZChy143_YrSlDB477RHPxkRqA0wGJB1E';
+const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsanZwbHJiam9nbmN3cnBtZnNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODUyMDEzMiwiZXhwIjoyMDk0MDk2MTMyfQ.20i7g7ClEJVCvKiVFR3-mXT-9EoHVhRV6iSiioWa-O0';
+
+async function api(method, path, body, useService = true) {
+  const key = useService ? SERVICE_KEY : ANON_KEY;
+  const opts = { method, headers: { 'apikey': key, 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' } };
+  if (body) { opts.body = JSON.stringify(body); opts.headers['Prefer'] = 'return=representation'; }
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, opts);
+    let data; try { data = await res.json(); } catch(e) { data = null; }
+    return { ok: res.ok, status: res.status, data };
+  } catch(e) { return { ok: false, status: 0, data: null, error: e.message }; }
+}
+
+// ─── SEED DATA ──────────────────────────────────────────────────────────────
+
+const DEMO_USERS = [
+  { name:"Company Owner", email:"owner@canaan.co.ke", role:"company_owner", pw:"owner123", sites:[1,2,3,4,5,6,7,8,9,10,11] },
+  { name:"CEO", email:"ceo@canaan.co.ke", role:"ceo", pw:"ceo123", sites:[1,2,3,4,5,6,7,8,9,10,11] },
+  { name:"Office Manager", email:"om@canaan.co.ke", role:"office_manager", pw:"om123", sites:[1,2,3,4,5,6,7,8,9,10,11] },
+  { name:"Asset Manager", email:"am@canaan.co.ke", role:"asset_manager", pw:"am123", sites:[1,2,3,4,5,6,7,8,9,10,11] },
+  { name:"Finance Officer", email:"finance@canaan.co.ke", role:"finance", pw:"finance123", sites:[1,2,3,4,5,6,7,8,9,10,11] },
+  { name:"Project Manager 1", email:"pm1@canaan.co.ke", role:"project_manager", pw:"pm123", sites:[1] },
+  { name:"Project Manager 2", email:"pm2@canaan.co.ke", role:"project_manager", pw:"pm123", sites:[2] },
+  { name:"Engineer", email:"eng@canaan.co.ke", role:"engineer", pw:"eng123", sites:[1] },
+  { name:"Store Manager", email:"sm@canaan.co.ke", role:"store_manager", pw:"sm123", sites:[1,2,3,4,5,6,7,8,9,10,11] },
+  { name:"Storekeeper Local", email:"sk.local@canaan.co.ke", role:"storekeeper_local", pw:"sk123", sites:[1], skType:"local" },
+  { name:"Storekeeper Import", email:"sk.import@canaan.co.ke", role:"storekeeper_import", pw:"sk123", sites:[1], skType:"imported" },
+  { name:"Storekeeper Scaff", email:"sk.scaff@canaan.co.ke", role:"storekeeper_scaffolding", pw:"sk123", sites:[1], skType:"scaffolding" },
+  { name:"Procurement Officer", email:"po@canaan.co.ke", role:"procurement_officer", pw:"po123", sites:[1,2,3,4,5,6,7,8,9,10,11] },
+  { name:"Transfer Officer", email:"to@canaan.co.ke", role:"transfer_officer", pw:"to123", sites:[1,2,3,4,5,6,7,8,9,10,11] },
+  { name:"Data Holder", email:"dh@canaan.co.ke", role:"data_holder", pw:"dh123", sites:[1,2,3,4,5,6,7,8,9,10,11] },
+  { name:"Site Overseer", email:"so@canaan.co.ke", role:"site_overseer", pw:"so123", sites:[1,2,3,4,5,6,7,8,9,10,11] },
+  { name:"Admin", email:"admin@canaan.co.ke", role:"admin", pw:"admin123", sites:[1,2,3,4,5,6,7,8,9,10,11] },
+];
+
+const MATERIALS = [
+  {name:'Ordinary Portland Cement 50kg',cat:'Concrete',unit:'Bags',price:750,type:'local'},
+  {name:'Steel Rebar 12mm',cat:'Steel',unit:'Metres',price:650,type:'local'},
+  {name:'Steel Rebar 8mm',cat:'Steel',unit:'Metres',price:380,type:'local'},
+  {name:'Ballast 20mm',cat:'Concrete',unit:'Tons',price:2800,type:'local'},
+  {name:'River Sand',cat:'Concrete',unit:'Tons',price:2200,type:'local'},
+  {name:'13A Socket Outlet',cat:'Electrical',unit:'Pcs',price:650,type:'local'},
+  {name:'Cable 2.5mm Twin & Earth',cat:'Electrical',unit:'Metres',price:85,type:'local'},
+  {name:'Conduit Pipe 20mm',cat:'Electrical',unit:'Metres',price:120,type:'local'},
+  {name:'MCB 32A Single Pole',cat:'Electrical',unit:'Pcs',price:1200,type:'local'},
+  {name:'PVC Pipe 50mm',cat:'Plumbing',unit:'Metres',price:320,type:'local'},
+  {name:'Sink Mixer',cat:'Plumbing',unit:'Pcs',price:3500,type:'imported'},
+  {name:'Floor Tiles 60x60',cat:'Finishing',unit:'M2',price:1800,type:'imported'},
+  {name:'Safety Helmet',cat:'Safety',unit:'Pcs',price:850,type:'local'},
+  {name:'Scaffolding Frame 1.8m',cat:'Scaffolding',unit:'Pcs',price:8500,type:'scaffolding'},
+  {name:'Scaffolding Base Jack',cat:'Scaffolding',unit:'Pcs',price:3200,type:'scaffolding'},
+  {name:'Nails 3 inch',cat:'Hardware',unit:'Kgs',price:280,type:'local'},
+  {name:'Door Lock Set',cat:'Hardware',unit:'Pcs',price:4500,type:'imported'},
+];
+
+async function seedData() {
+  const btn = document.getElementById('btn-seed');
+  btn.disabled = true; btn.textContent = '⏳ Seeding...';
+  clearLog();
+  log('🌱 Seeding database...\n', 'info');
+
+  // Check if already seeded
+  const ck = await api('GET', 'users?select=email&limit=1');
+  if (ck.ok && ck.data && ck.data.length > 0) {
+    log('Users already exist, checking count...', 'info');
+    const all = await api('GET', 'users?select=email');
+    if (all.data && all.data.length >= 16) {
+      log('✅ ' + all.data.length + ' users already seeded', 'ok');
+    } else {
+      log('Only ' + (all.data||[]).length + ' users, seeding missing...', 'info');
+    }
+  }
+
+  // Seed missing users
+  for (const u of DEMO_USERS) {
+    const ex = await api('GET', 'users?email=eq.' + encodeURIComponent(u.email) + '&limit=1');
+    if (ex.ok && ex.data && ex.data.length > 0) { continue; }
+    const r = await api('POST', 'users', {
+      name: u.name, email: u.email, password_hash: u.pw,
+      role: u.role, site_ids: u.sites, is_active: true,
+      storekeeper_type: u.skType || null
+    });
+    if (r.ok || r.status === 201) { log('  ✅ Created: ' + u.name + ' (' + u.role + ')', 'ok'); }
+    else { log('  ❌ Failed: ' + u.email + ' (' + r.status + ')', 'err'); }
+    await sleep(80);
+  }
+
+  // Check stock
+  const sk = await api('GET', 'stock?select=id&limit=5');
+  if (!sk.data || sk.data.length < 10) {
+    log('\n📦 Seeding stock data...', 'info');
+    for (let s = 1; s <= 11; s++) {
+      const mats = MATERIALS.filter(m => !(m.type === 'scaffolding' && s > 10));
+      for (const m of mats) {
+        const qty = m.type === 'scaffolding' ? Math.floor(Math.random()*20)+5 : Math.floor(Math.random()*200)+10;
+        await api('POST', 'stock', {
+          site_id: s, material_name: m.name, category: m.cat, quantity: qty,
+          unit: m.unit, unit_price: m.price, storekeeper_type: m.type
+        });
+      }
+      log('  ✅ Site ' + s + ': ' + mats.length + ' materials', 'ok');
+      await sleep(50);
+    }
+  } else { log('✅ Stock already seeded (' + sk.data.length + '+ items)', 'ok'); }
+
+  log('\n✅ Done! <button class="btn-gold" onclick="runTests()" style="padding:6px 16px;font-size:12px;">▶ Now Run Tests</button>', 'ok');
+  btn.disabled = false; btn.textContent = '🌱 Re-Seed Data';
+}
+
+// ─── TESTS ──────────────────────────────────────────────────────────────────
+
+async function runTests() {
+  const btn = document.getElementById('btn-run');
+  btn.disabled = true; btn.textContent = '⏳ Running...';
+  clearLog();
+  document.getElementById('status-text').textContent = 'Testing...';
+  RUN = PASS = FAIL = SKIP = TOTAL = 0; upd();
+
+  log('🚀 CDL E2E Test Suite\n' + new Date().toLocaleString(), 'info');
+
+  try {
+    // 1. DATABASE CHECKS
+    section('1. DATABASE CONNECTIVITY');
+    const sites = await api('GET', 'sites?select=*&order=id.asc');
+    if (sites.ok && sites.data) { ok(sites.data.length + ' sites found'); }
+    else { err('Cannot connect to database'); throw new Error('DB unreachable'); }
+
+    section('2. USERS - ALL 16 ROLES');
+    const users = {};
+    const allUsers = await api('GET', 'users?select=id,name,email,role,site_ids,storekeeper_type,is_active&order=name.asc');
+    if (!allUsers.ok || !allUsers.data) { err('Cannot fetch users'); throw new Error('No users'); }
+    log('Found ' + allUsers.data.length + ' users', 'info');
+
+    for (const u of DEMO_USERS) {
+      const found = allUsers.data.find(x => x.email === u.email);
+      if (!found) { err(u.name + ' (' + u.email + ') - NOT FOUND'); continue; }
+      if (!found.is_active) { err(u.name + ' - INACTIVE'); continue; }
+      // Verify password
+      const pwCheck = await api('GET', 'users?email=eq.' + encodeURIComponent(u.email) + '&select=password_hash', false);
+      if (pwCheck.data && pwCheck.data[0].password_hash === u.pw) {
+        ok(u.name + ' - login OK');
+        users[u.email] = found;
+      } else {
+        err(u.name + ' - password mismatch (stored: ' + (pwCheck.data?.[0]?.password_hash||'?') + ')');
+      }
+    }
+
+    section('3. STOCK DATA');
+    const stock = await api('GET', 'stock?select=id,site_id,material_name,quantity,unit_price,storekeeper_type&limit=500');
+    if (stock.ok && stock.data && stock.data.length > 0) {
+      ok(stock.data.length + ' stock items');
+      const types = [...new Set(stock.data.map(s=>s.storekeeper_type))];
+      const sites = [...new Set(stock.data.map(s=>s.site_id))];
+      info('Types: ' + types.join(', '));
+      info('Sites: ' + sites.sort((a,b)=>a-b).join(', '));
+      const val = stock.data.reduce((s,i)=>s+((i.quantity||0)*(i.unit_price||0)),0);
+      info('Total value: KES ' + val.toLocaleString());
+    } else { skip('No stock data'); }
+
+    // 4. WORKFLOW TESTS
+    const eng = users['eng@canaan.co.ke'];
+    const pm1 = users['pm1@canaan.co.ke'];
+    const pm2 = users['pm2@canaan.co.ke'];
+    const am = users['am@canaan.co.ke'];
+    const sk = users['sk.local@canaan.co.ke'];
+    const sm = users['sm@canaan.co.ke'];
+    const fin = users['finance@canaan.co.ke'];
+    const po = users['po@canaan.co.ke'];
+    const to = users['to@canaan.co.ke'];
+
+    // ── MATERIAL REQUEST FLOW ──
+    section('4. MATERIAL REQUEST FLOW');
+    if (!eng || !pm1 || !sk) { skip('Missing users for flow'); }
+    else {
+      // Engineer creates request
+      const req = await api('POST', 'material_requests', {
+        site_id: 1, requested_by: eng.id, material_name: 'Ordinary Portland Cement 50kg',
+        quantity: 25, unit: 'Bags', urgency: 'high', purpose: 'Foundation work phase 2', status: 'pending'
+      });
+      const reqId = req.data?.[0]?.id || req.data?.id;
+      if (reqId) { ok('Request created: ' + reqId.slice(0,8)); }
+      else { err('Create request: ' + req.status); }
+
+      // PM approves
+      if (reqId) {
+        const ap = await api('PATCH', 'material_requests?id=eq.' + reqId, {
+          status: 'pm_approved', pm_approved_by: pm1.id, pm_approved_at: new Date().toISOString()
+        });
+        if (ap.ok) { ok('PM approved → pm_approved'); }
+        else { err('PM approve: ' + ap.status); }
+
+        // Check notifications
+        const n = await api('GET', 'notifications?user_id=eq.' + sk.id + '&order=created_at.desc&limit=3');
+        if (n.ok && n.data?.length > 0) { ok('Storekeeper notifications: ' + n.data.length + ' ("' + n.data[0].title + '")'); }
+        else { info('  (Notifications handled by app.js, not API)'); }
+
+        // Storekeeper issues
+        const stk = await api('GET', 'stock?site_id=eq.1&material_name=eq.Ordinary Portland Cement 50kg&storekeeper_type=eq.local&limit=1');
+        if (stk.ok && stk.data?.[0] && stk.data[0].quantity >= 25) {
+          const iss = await api('PATCH', 'material_requests?id=eq.' + reqId, {
+            status: 'issued', issued_by: sk.id, issued_at: new Date().toISOString(),
+            expiry_at: new Date(Date.now()+24*3600000).toISOString()
+          });
+          if (iss.ok) { ok('Storekeeper issued → issued'); }
+          else { err('Issue: ' + iss.status); }
+
+          // Deduct stock
+          const newQty = stk.data[0].quantity - 25;
+          const ded = await api('PATCH', 'stock?id=eq.' + stk.data[0].id, { quantity: newQty, last_updated: new Date().toISOString(), updated_by: sk.id });
+          if (ded.ok) { ok('Stock deducted: ' + stk.data[0].quantity + ' → ' + newQty + ' Bags ✓'); }
+          else { err('Stock deduct: ' + ded.status); }
+        } else { err('Insufficient stock for issue test (avail: ' + (stk.data?.[0]?.quantity||0) + ')'); }
+
+        // Mark collected
+        const col = await api('PATCH', 'material_requests?id=eq.' + reqId, { status: 'collected', collected_at: new Date().toISOString() });
+        if (col.ok) { ok('Marked collected → collected'); }
+
+        // Complete
+        const com = await api('PATCH', 'material_requests?id=eq.' + reqId, { status: 'completed' });
+        if (com.ok) { ok('Completed → completed'); }
+      }
+    }
+
+    // ── TRANSFER FLOW ──
+    section('5. TRANSFER FLOW (PM1 → PM2 → AM)');
+    if (!pm1 || !pm2 || !am) { skip('Missing users for transfer'); }
+    else {
+      const tf = await api('POST', 'transfers', {
+        from_site_id: 1, to_site_id: 2, items: [{name:'Steel Rebar 12mm',quantity:50,unit:'Metres'}],
+        status: 'pending', step_log: [{step:'created',by:pm1.name,role:pm1.role,at:new Date().toISOString()}]
+      });
+      const tfId = tf.data?.[0]?.id || tf.data?.id;
+      if (tfId) { ok('Transfer created: ' + tfId.slice(0,8)); }
+      else { err('Create transfer: ' + tf.status); tfId = null; }
+
+      if (tfId) {
+        // Source PM approves
+        const s1 = await advTransfer(tfId, 'source_pm_approved', pm1);
+        if (s1) { ok('Source PM approved → source_pm_approved'); }
+        // Dest PM approves
+        const s2 = await advTransfer(tfId, 'dest_pm_approved', pm2);
+        if (s2) { ok('Dest PM approved → dest_pm_approved'); }
+        // AM approves
+        const s3 = await advTransfer(tfId, 'am_approved', am);
+        if (s3) { ok('AM approved → am_approved'); }
+
+        // Check final status
+        const ck = await api('GET', 'transfers?id=eq.' + tfId + '&select=status,step_log');
+        if (ck.data?.[0]) {
+          info('Final status: ' + ck.data[0].status + ' (' + (ck.data[0].step_log||[]).length + ' steps)');
+        }
+      }
+    }
+
+    // ── GRN WORKFLOW ──
+    section('6. GRN WORKFLOW');
+    if (!sk || !sm) { skip('Missing users for GRN'); }
+    else {
+      const grn = await api('POST', 'grns', {
+        site_id: 1, grn_number: 'GRN-TEST-001', supplier: 'Test Supplier Ltd',
+        items: [{name:'Ordinary Portland Cement 50kg',quantity:100,unit:'Bags',unit_price:750}],
+        total_value: 75000, storekeeper_type: 'local', received_by: sk.id, status: 'pending'
+      });
+      const grnId = grn.data?.[0]?.id || grn.data?.id;
+      if (grnId) { ok('GRN created: ' + grnId.slice(0,8)); }
+      else { err('Create GRN: ' + grn.status); }
+
+      if (grnId) {
+        const ver = await api('PATCH', 'grns?id=eq.' + grnId, { status: 'verified', verified_by: sm.id, verified_at: new Date().toISOString() });
+        if (ver.ok) { ok('GRN verified by Store Manager'); }
+        else { err('Verify GRN: ' + ver.status); }
+      }
+    }
+
+    // ── INCIDENT WORKFLOW ──
+    section('7. INCIDENT FLOW');
+    if (!sk || !pm1) { skip('Missing users for incident'); }
+    else {
+      const inc = await api('POST', 'incidents', {
+        site_id: 1, reported_by: sk.id, type: 'damaged', material_name: 'Steel Rebar 12mm',
+        quantity: 10, estimated_value: 6500, reason: 'Damaged during unloading', status: 'pending'
+      });
+      const incId = inc.data?.[0]?.id || inc.data?.id;
+      if (incId) { ok('Incident reported: ' + incId.slice(0,8)); }
+      else { err('Create incident: ' + inc.status); }
+
+      if (incId) {
+        const res = await api('PATCH', 'incidents?id=eq.' + incId, { pm_decision: 'operational_loss', status: 'resolved', pm_resolved_at: new Date().toISOString(), pm_notes: 'Approved as operational loss' });
+        if (res.ok) { ok('Incident resolved by PM'); }
+        else { err('Resolve: ' + res.status); }
+      }
+    }
+
+    // ── PROCUREMENT FLOW ──
+    section('8. PROCUREMENT FLOW');
+    if (!pm1 || !am || !fin || !po) { skip('Missing users for procurement'); }
+    else {
+      const proc = await api('POST', 'procurement', {
+        site_id: 1, requested_by: pm1.id, total_amount: 360000, supplier: 'Tile & Stone Ltd',
+        items: [{name:'Floor Tiles 60x60',quantity:200,unit:'M2',unit_price:1800}],
+        status: 'pending', approval_chain: []
+      });
+      const pId = proc.data?.[0]?.id || proc.data?.id;
+      if (pId) { ok('Procurement created: ' + pId.slice(0,8)); }
+      else { err('Create procurement: ' + proc.status); pId = null; }
+
+      if (pId) {
+        const steps = [
+          {s:'pm_approved',u:pm1}, {s:'am_approved',u:am},
+          {s:'finance_approved',u:fin}, {s:'processing',u:po}
+        ];
+        for (const st of steps) {
+          const cur = await api('GET', 'procurement?id=eq.' + pId + '&select=approval_chain');
+          const chain = cur.data?.[0]?.approval_chain || [];
+          chain.push({by:st.u.name,role:st.u.role,at:new Date().toISOString()});
+          const r = await api('PATCH', 'procurement?id=eq.' + pId, { status: st.s, approval_chain: chain });
+          if (r.ok) ok('  → ' + st.s + ' by ' + st.u.name);
+          else err('  → ' + st.s + ': ' + r.status);
+        }
+      }
+    }
+
+    // ── AUDIT LOG ──
+    section('9. AUDIT LOG');
+    const audit = await api('GET', 'audit_log?select=action,module,actor_name,timestamp&order=timestamp.desc&limit=10');
+    if (audit.ok && audit.data) {
+      ok(audit.data.length + ' audit entries');
+      audit.data.slice(0,5).forEach(a => info('  ' + a.action + ' (' + (a.module||'?') + ') by ' + (a.actor_name||'system')));
+    }
+
+    // ── NOTIFICATIONS ──
+    section('10. NOTIFICATIONS');
+    const notifs = await api('GET', 'notifications?select=title,type,created_at&order=created_at.desc&limit=10');
+    if (notifs.ok && notifs.data) {
+      ok(notifs.data.length + ' notifications');
+      notifs.data.slice(0,5).forEach(n => info('  "' + n.title + '" (' + n.type + ')'));
+    }
+
+    // ── STOCK VERIFICATION ──
+    section('11. STOCK DEDUCTION VERIFICATION');
+    const finalStock = await api('GET', 'stock?site_id=eq.1&material_name=eq.Ordinary Portland Cement 50kg&storekeeper_type=eq.local&limit=1');
+    if (finalStock.ok && finalStock.data?.[0]) {
+      info('Cement at Site 1: ' + finalStock.data[0].quantity + ' Bags');
+      if (finalStock.data[0].quantity < 200) { ok('Stock was deducted during workflow tests ✓'); }
+      else { info('Stock unchanged (deduction may have been reversed or item not found)'); }
+    }
+
+  } catch(e) {
+    log('\n❌ FATAL: ' + e.message, 'err');
+  }
+
+  log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  log('📊 RESULTS: ' + PASS + ' passed, ' + FAIL + ' failed, ' + SKIP + ' skipped (' + TOTAL + ' total)');
+  if (FAIL === 0 && PASS > 5) log('🎉 ALL CRITICAL TESTS PASSED!', 'ok');
+  else if (FAIL > 0) log('⚠️ ' + FAIL + ' test(s) need attention', 'warn');
+
+  btn.disabled = false; btn.textContent = '▶ Re-Run Tests';
+  document.getElementById('status-text').textContent = 'Done: ' + PASS + '/' + TOTAL + ' passed';
+
+  // Save report
+  const report = document.getElementById('log').textContent;
+  const blob = new Blob([report], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'cdl-test-report-' + new Date().toISOString().slice(0,10) + '.txt';
+  a.click();
+}
+
+async function advTransfer(tfId, status, user) {
+  const cur = await api('GET', 'transfers?id=eq.' + tfId + '&select=step_log,status');
+  if (!cur.data?.[0]) return false;
+  const log = cur.data[0].step_log || [];
+  log.push({step:status, by:user.name, role:user.role, at:new Date().toISOString()});
+  const r = await api('PATCH', 'transfers?id=eq.' + tfId, { status, step_log: log });
+  return r.ok;
+}
+</script>
+</body>
+</html>

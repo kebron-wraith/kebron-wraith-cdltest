@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CDL System Setup</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #06070a; color: #f5f7fa; min-height: 100vh; padding: 40px 20px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 28px; font-weight: 800; margin-bottom: 8px; background: linear-gradient(135deg, #d4af6e, #b8944f); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .subtitle { color: #8a91a4; margin-bottom: 32px; }
+    .card { background: #131620; border: 1px solid #1a1f2e; border-radius: 14px; padding: 24px; margin-bottom: 20px; }
+    .card h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #d4af6e; }
+    .card p { color: #8a91a4; font-size: 14px; margin-bottom: 8px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .btn-gold { background: linear-gradient(135deg, #d4af6e, #b8944f); color: #06070a; }
+    .btn-gold:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(212,175,110,0.3); }
+    .btn-gold:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-dark { background: #1a1e2c; color: #c8cdd6; border: 1px solid #252b3d; }
+    .btn-dark:hover { background: #23283a; }
+    .status { margin-top: 16px; padding: 16px; border-radius: 10px; font-size: 13px; max-height: 400px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; }
+    .status-ok { background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.3); color: #34d399; }
+    .status-err { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); color: #f87171; }
+    .status-info { background: rgba(91,154,255,0.1); border: 1px solid rgba(91,154,255,0.3); color: #5b9aff; }
+    .progress-bar { background: #1a1e2e; border-radius: 4px; height: 6px; margin-top: 8px; overflow: hidden; }
+    .progress-fill { background: linear-gradient(90deg, #d4af6e, #b8944f); height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .user-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 16px; }
+    .user-item { background: #0e1018; border: 1px solid #1a1f2e; border-radius: 8px; padding: 10px 14px; font-size: 12px; }
+    .user-item .role { color: #d4af6e; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .user-item .email { color: #c8cdd6; margin-top: 2px; }
+    .user-item .pw { color: #8a91a4; margin-top: 2px; font-family: monospace; }
+    .step { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 20px; }
+    .step-num { width: 32px; height: 32px; border-radius: 50%; background: #1a1e2c; border: 2px solid #d4af6e; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: #d4af6e; flex-shrink: 0; }
+    .step-content { flex: 1; }
+    .step-content h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .step-content p { color: #8a91a4; font-size: 13px; line-height: 1.6; }
+    code { background: #0e1018; padding: 2px 6px; border-radius: 4px; font-size: 12px; color: #d4af6e; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🏗 CDL System Setup</h1>
+    <p class="subtitle">Canaan Developers Ltd · Nairobi, Kenya · v9.0</p>
+
+    <div class="card">
+      <h2>⚠️ Prerequisite: Run SQL Migration First</h2>
+      <p>Before seeding users, you must run the database migration in Supabase SQL Editor:</p>
+      <ol style="color: #8a91a4; font-size: 13px; margin: 12px 0 0 20px; line-height: 2;">
+        <li>Go to <strong style="color: #c8cdd6;">Supabase Dashboard → SQL Editor</strong></li>
+        <li>Open the file <code>supabase/migration_v9.sql</code> from this project</li>
+        <li>Copy all SQL and paste into SQL Editor</li>
+        <li>Click <strong style="color: #34d399;">Run</strong></li>
+        <li>Wait for "Success" message</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>Step 1: Seed Demo Users</h2>
+      <p>This creates 16 demo user accounts, one for each role type.</p>
+      <button class="btn btn-gold" id="btn-seed-users" onclick="seedUsers()">
+        ✦ Seed 16 Demo Users
+      </button>
+      <div id="users-status"></div>
+
+      <div class="user-list" id="user-list"></div>
+    </div>
+
+    <div class="card">
+      <h2>Step 2: Seed Stock Data</h2>
+      <p>This adds realistic construction materials across all 11 sites with varying quantities.</p>
+      <button class="btn btn-dark" id="btn-seed-stock" onclick="seedStock()" disabled>
+        📦 Seed Stock Data
+      </button>
+      <div id="stock-status"></div>
+    </div>
+
+    <div class="card">
+      <h2>Step 3: Launch App</h2>
+      <p>Once users and stock are seeded, open the main app and login.</p>
+      <a href="index.html" class="btn btn-gold" id="btn-launch" style="opacity: 0.4; pointer-events: none;">
+        🚀 Launch CDL App
+      </a>
+    </div>
+
+    <div style="margin-top: 30px; text-align: center;">
+      <img src="https://canaandevelopers.com/wp-content/uploads/2025/11/CDL-Logo-01-1.png"
+        style="height: 40px; object-fit: contain; opacity: 0.3;"
+        onerror="this.style.display='none'" />
+      <p style="color: #4e5568; font-size: 11px; margin-top: 8px;">Built by Kebron Isaias · Canaan Developers Ltd · Nairobi</p>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://dljvplrbjogncwrpmfsj.supabase.co";
+    // Uses anon key - for full seeding use service role key
+    const API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsanZwbHJiam9nbmN3cnBtZnNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MjAxMzIsImV4cCI6MjA5NDA5NjEzMn0.GmsMNKlRos6ZChy143_YrSlDB477RHPxkRqA0wGJB1E";
+
+    const DEMO_USERS = [
+      { name:"Company Owner",    email:"owner@canaan.co.ke",     role:"company_owner",          password:"owner123",    site_ids:[1,2,3,4,5,6,7,8,9,10,11] },
+      { name:"CEO",              email:"ceo@canaan.co.ke",       role:"ceo",                    password:"ceo123",      site_ids:[1,2,3,4,5,6,7,8,9,10,11] },
+      { name:"Office Manager",   email:"om@canaan.co.ke",        role:"office_manager",         password:"om123",       site_ids:[1,2,3,4,5,6,7,8,9,10,11] },
+      { name:"Asset Manager",    email:"am@canaan.co.ke",        role:"asset_manager",          password:"am123",       site_ids:[1,2,3,4,5,6,7,8,9,10,11] },
+      { name:"Finance Officer",  email:"finance@canaan.co.ke",   role:"finance",                password:"finance123",  site_ids:[1,2,3,4,5,6,7,8,9,10,11] },
+      { name:"Project Manager 1",email:"pm1@canaan.co.ke",       role:"project_manager",        password:"pm123",       site_ids:[1] },
+      { name:"Project Manager 2",email:"pm2@canaan.co.ke",       role:"project_manager",        password:"pm123",       site_ids:[2] },
+      { name:"Engineer",         email:"eng@canaan.co.ke",       role:"engineer",               password:"eng123",      site_ids:[1] },
+      { name:"Store Manager",    email:"sm@canaan.co.ke",        role:"store_manager",          password:"sm123",       site_ids:[1,2,3,4,5,6,7,8,9,10,11] },
+      { name:"Storekeeper Local",     email:"sk.local@canaan.co.ke",  role:"storekeeper_local",      password:"sk123",  site_ids:[1], storekeeper_type:"local" },
+      { name:"Storekeeper Import",    email:"sk.import@canaan.co.ke", role:"storekeeper_import",     password:"sk123",  site_ids:[1], storekeeper_type:"imported" },
+      { name:"Storekeeper Scaff",     email:"sk.scaff@canaan.co.ke",  role:"storekeeper_scaffolding", password:"sk123", site_ids:[1], storekeeper_type:"scaffolding" },
+      { name:"Procurement Officer",   email:"po@canaan.co.ke",        role:"procurement_officer",    password:"po123",  site_ids:[1,2,3,4,5,6,7,8,9,10,11] },
+      { name:"Transfer Officer",      email:"to@canaan.co.ke",        role:"transfer_officer",       password:"to123",  site_ids:[1,2,3,4,5,6,7,8,9,10,11] },
+      { name:"Data Holder",           email:"dh@canaan.co.ke",        role:"data_holder",            password:"dh123",  site_ids:[1,2,3,4,5,6,7,8,9,10,11] },
+      { name:"Site Overseer",         email:"so@canaan.co.ke",        role:"site_overseer",          password:"so123",  site_ids:[1,2,3,4,5,6,7,8,9,10,11] },
+      { name:"Admin",                 email:"admin@canaan.co.ke",     role:"admin",                  password:"admin123", site_ids:[1,2,3,4,5,6,7,8,9,10,11] },
+    ];
+
+    function log(elId, msg, type = 'info') {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      el.className = 'status status-' + type;
+      const time = new Date().toLocaleTimeString();
+      el.innerHTML += `[${time}] ${msg}\n`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function clearLog(elId) {
+      const el = document.getElementById(elId);
+      if (el) el.innerHTML = '';
+    }
+
+    async function api(method, path, body) {
+      const opts = {
+        method,
+        headers: { 'apikey': API_KEY, 'Authorization': 'Bearer ' + API_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      };
+      if (body) opts.body = JSON.stringify(body);
+      const res = await fetch(SUPABASE_URL + path, opts);
+      let data;
+      try { data = await res.json(); } catch { data = null; }
+      return { ok: res.ok, status: res.status, data };
+    }
+
+    async function seedUsers() {
+      const btn = document.getElementById('btn-seed-users');
+      btn.disabled = true;
+      btn.textContent = 'Seeding...';
+      clearLog('users-status');
+      log('users-status', 'Starting user seeding...', 'info');
+
+      let seeded = 0, skipped = 0, errors = 0;
+      for (const user of DEMO_USERS) {
+        // Check if user exists
+        const check = await api('GET', `/rest/v1/users?email=eq.${encodeURIComponent(user.email)}&limit=1`);
+        if (check.data && check.data.length > 0) {
+          log('users-users-status', `⊘ Skipped (exists): ${user.email}`, 'info');
+          skipped++;
+          continue;
+        }
+
+        const payload = {
+          name: user.name, email: user.email, password_hash: user.password,
+          role: user.role, site_ids: user.site_ids,
+          storekeeper_type: user.storekeeper_type || null, is_active: true
+        };
+        const res = await api('POST', '/rest/v1/users', payload);
+        if (res.ok || res.status === 201) {
+          log('users-status', `✓ Created: ${user.name} (${user.role})`, 'ok');
+          seeded++;
+        } else {
+          log('users-status', `✗ Error creating ${user.email}: ${res.status}`, 'err');
+          errors++;
+        }
+        // Small delay to avoid rate limits
+        await new Promise(r => setTimeout(r, 100));
+      }
+
+      log('users-status', `\nDone! Seeded: ${seeded}, Skipped: ${skipped}, Errors: ${errors}`, errors > 0 ? 'err' : 'ok');
+
+      // Show user list
+      const list = document.getElementById('user-list');
+      list.innerHTML = DEMO_USERS.map(u => `
+        <div class="user-item">
+          <div class="role">${u.role.replace(/_/g, ' ')}</div>
+          <div class="email">${u.email}</div>
+          <div class="pw">Password: ${u.password}</div>
+        </div>`).join('');
+
+      btn.textContent = '✓ Users Seeded';
+      document.getElementById('btn-seed-stock').disabled = false;
+    }
+
+    async function seedStock() {
+      const btn = document.getElementById('btn-seed-stock');
+      btn.disabled = true;
+      btn.textContent = 'Seeding stock...';
+      clearLog('stock-status');
+      log('stock-status', 'Loading materials from data.js...', 'info');
+
+      // We'll use a predefined set of key materials
+      const MATERIALS = [
+        { name: 'Ordinary Portland Cement 50kg', category: 'Concrete', unit: 'Bags', price: 750, type: 'local' },
+        { name: 'Steel Rebar 12mm', category: 'Steel', unit: 'Metres', price: 650, type: 'local' },
+        { name: 'Steel Rebar 8mm', category: 'Steel', unit: 'Metres', price: 380, type: 'local' },
+        { name: 'Ballast 20mm', category: 'Concrete', unit: 'Tons', price: 2800, type: 'local' },
+        { name: 'River Sand', category: 'Concrete', unit: 'Tons', price: 2200, type: 'local' },
+        { name: '13A Socket Outlet', category: 'Electrical', unit: 'Pcs', price: 650, type: 'local' },
+        { name: 'Cable 2.5mm Twin & Earth', category: 'Electrical', unit: 'Metres', price: 85, type: 'local' },
+        { name: 'Conduit Pipe 20mm', category: 'Electrical', unit: 'Metres', price: 120, type: 'local' },
+        { name: 'PVC Pipe 50mm', category: 'Plumbing', unit: 'Metres', price: 320, type: 'local' },
+        { name: 'Sink Mixer', category: 'Plumbing', unit: 'Pcs', price: 3500, type: 'imported' },
+        { name: 'Floor Tiles 60x60', category: 'Finishing', unit: 'M2', price: 1800, type: 'imported' },
+        { name: 'Safety Helmet', category: 'Safety', unit: 'Pcs', price: 850, type: 'local' },
+        { name: 'Scaffolding Frame 1.8m', category: 'Scaffolding', unit: 'Pcs', price: 8500, type: 'scaffolding' },
+        { name: 'Scaffolding Base Jack', category: 'Scaffolding', unit: 'Pcs', price: 3200, type: 'scaffolding' },
+        { name: 'Nails 3 inch', category: 'Hardware', unit: 'Kgs', price: 280, type: 'local' },
+        { name: 'Door Lock Set', category: 'Hardware', unit: 'Pcs', price: 4500, type: 'imported' },
+      ];
+
+      let total = 0;
+      for (let siteId = 1; siteId <= 11; siteId++) {
+        const siteMats = MATERIALS.filter(m => !(m.type === 'scaffolding' && siteId > 10));
+        for (const mat of siteMats) {
+          const qty = mat.type === 'scaffolding' ? Math.floor(Math.random() * 20) + 5 : Math.floor(Math.random() * 200) + 10;
+          await api('POST', '/rest/v1/stock', {
+            site_id: siteId, material_name: mat.name, category: mat.category,
+            quantity: qty, unit: mat.unit, unit_price: mat.price,
+            storekeeper_type: mat.type, opening_balance_locked: false
+          });
+          total++;
+        }
+        log('stock-status', `✓ Site ${siteId}: ${siteMats.length} materials added`, 'ok');
+        await new Promise(r => setTimeout(r, 50));
+      }
+
+      log('stock-status', `\nDone! Total stock items seeded: ${total}`, 'ok');
+      btn.textContent = '✓ Stock Seeded';
+
+      // Enable launch button
+      const launch = document.getElementById('btn-launch');
+      launch.style.opacity = '1';
+      launch.style.pointerEvents = 'auto';
+    }
+
+    // Auto-check if already seeded
+    (async () => {
+      const res = await api('GET', '/rest/v1/users?select=email&limit=1');
+      if (res.data && res.data.length > 0) {
+        document.getElementById('btn-seed-users').textContent = '✓ Users Already Seeded';
+        document.getElementById('btn-seed-users').disabled = true;
+        document.getElementById('btn-seed-stock').disabled = false;
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="CDL Site Management — AI-powered construction site operations for Canaan Developers Ltd" />
+  <title>CDL Site Management v10</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="index.css?v=10" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#06070a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CDL Sites" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <script>if(window.emailjs){emailjs.init("ryd3W4j56HPHbiD09");}</script>
+</head>
+<body>
+  <div id="app-root"></div>
+  <script>
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.getRegistrations().then(function(rs){for(let r of rs){r.unregister();}});
+      if(window.caches){caches.keys().then(function(ks){ks.forEach(function(k){caches.delete(k);});});}
+    }
+  </script>
+  <script type="module" src="app.js?v=35"></script>
+  <script nomodule>
+    document.body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--red);font-size:16px;">⚠️ Your browser does not support ES modules. Please use a modern browser (Chrome 61+, Firefox 60+, Safari 11+, Edge 16+).</div>';
+  </script>
+  <script>
+    window.addEventListener('error', function(e) {
+      if (e.message) {
+        var div = document.createElement('div');
+        div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:red;color:white;padding:12px;z-index:9999;font-family:monospace;font-size:13px;';
+        div.textContent = 'JS ERROR: ' + e.message + ' at ' + e.filename + ':' + e.lineno;
+        document.body.appendChild(div);
+      }
+    });
+    window.addEventListener('unhandledrejection', function(e) {
+      var div = document.createElement('div');
+      div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:red;color:white;padding:12px;z-index:9999;font-family:monospace;font-size:13px;';
+      div.textContent = 'PROMISE ERROR: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason));
+      document.body.appendChild(div);
+    });
+  </script>
+</body>
+</html>

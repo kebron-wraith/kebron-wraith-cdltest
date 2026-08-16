@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>CDL UI Test</title>
+<style>
+body{font-family:system-ui;background:#111;color:#eee;margin:0;padding:10px}
+iframe{width:100%;height:70vh;border:2px solid #444;border-radius:8px;background:#fff}
+.log{background:#222;border:1px solid #333;border-radius:8px;padding:12px;margin-top:10px;font-family:monospace;font-size:12px;max-height:25vh;overflow-y:auto;white-space:pre-wrap}
+.ok{color:#0f0}.err{color:#f44}.warn{color:#fa0}.info{color:#6af}
+button{padding:8px 16px;margin:4px;border:none;border-radius:6px;cursor:pointer;font-weight:600}
+.b1{background:#d4af6e;color:#000}.b2{background:#333;color:#ccc}
+</style>
+</head>
+<body>
+<h2>🏗 CDL UI Test</h2>
+<button class="b1" id="b" onclick="start()">▶ Auto-Test</button>
+<button class="b2" onclick="clearLog()">Clear</button>
+<iframe id="f" src="http://localhost:8080/index.html"></iframe>
+<div class="log" id="l">Ready...</div>
+<script>
+function log(m,t=''){const e=document.getElementById('l');e.innerHTML+=`<div class="${t}">${m}</div>`;e.scrollTop=e.scrollHeight}
+function clearLog(){document.getElementById('l').innerHTML=''}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+async function act(fn){try{return await fn()}catch(e){log('ERR:'+e.message,'err');return null}}
+
+async function start(){
+  clearLog();
+  const btn=document.getElementById('b');btn.disabled=true;btn.textContent='⏳ Running...';
+  const iframe=document.getElementById('f');
+  const w=iframe.contentWindow;
+  const d=iframe.contentDocument;
+
+  log('🚀 Starting tests...','info');
+  await sleep(2000);
+
+  // 1. LOGIN PAGE
+  log('\n══ LOGIN PAGE ══','info');
+  const email=d.querySelector('#login-email');
+  const pw=d.querySelector('#login-password');
+  const sub=d.querySelector('#login-btn');
+  if(email&&pw&&sub){log('✅ Login form found','ok')}else{log('❌ Login form missing','err');btn.disabled=false;btn.textContent='▶ Run';return}
+
+  // 2. ADMIN LOGIN
+  log('\n══ ADMIN LOGIN ══','info');
+  email.focus();email.value='admin@canaan.co.ke';
+  pw.focus();pw.value='admin123';
+  sub.click();
+  await sleep(3500);
+  const side=d.querySelector('#sidebar');
+  if(side){log('✅ Admin login OK - sidebar visible','ok')}else{const err=d.querySelector('#login-error');log('❌ Login failed: '+(err?err.textContent:'no sidebar'),'err');btn.disabled=false;btn.textContent='▶ Run';return}
+
+  const navs=Array.from(d.querySelectorAll('[data-nav-item][id^="nav-"]')).filter(e=>e.offsetParent);
+  log(`✅ Nav items: ${navs.map(e=>e.textContent.trim().split('\n')[0]).join(', ')}`,'ok');
+
+  // 3. TEST EACH MODULE
+  const routes=['dashboard','inventory','grn','requests','transfers','procurement','incidents','reports','users','audit'];
+  for(const r of routes){
+    const b=d.getElementById('nav-'+r);
+    if(!b||!b.offsetParent){log(`⊘ ${r}: hidden`,'warn');continue}
+    b.click();
+    await sleep(1800);
+    const err=d.querySelector('[style*="color:var(--accent-red)"]');
+    const err2=d.querySelector('[style*="color: var(--accent-red)"]');
+    if(err&&err.offsetParent){log(`⚠ ${r}: ${err.textContent.substring(0,80)}`,'warn')}
+    else if(err2&&err2.offsetParent){log(`⚠ ${r}: ${err2.textContent.substring(0,80)}`,'warn')}
+    else{log(`✅ ${r}: loaded OK`,'ok')}
+  }
+
+  // 4. TEST INVENTORY - ADD STOCK
+  log('\n══ INVENTORY: ADD STOCK ══','info');
+  d.querySelector('#nav-inventory')?.click();
+  await sleep(1500);
+  const addBtn=d.querySelector('button:has-text("Add Stock")')||Array.from(d.querySelectorAll('button')).find(b=>b.textContent.includes('Add Stock'));
+  if(addBtn){addBtn.click();await sleep(1000);log('✅ Add Stock modal opened','ok')
+    const mName=d.querySelector('#m-name');const mQty=d.querySelector('#m-qty');const mPrice=d.querySelector('#m-price');const mType=d.querySelector('#m-type');const mSite=d.querySelector('#m-site');
+    if(mName){mName.value='Test Cement 50kg';mQty.value='100';mPrice.value='750';mType.value='local';if(mSite)mSite.value='1';log('✅ Filled stock form','ok')
+      const saveBtn=Array.from(d.querySelectorAll('button')).find(b=>b.textContent.includes('Save Stock'));
+      if(saveBtn){saveBtn.click();await sleep(2000);log('✅ Stock submitted','ok')
+        const wrap=d.querySelector('#inv-table-wrap');
+        if(wrap&&wrap.textContent.includes('Test Cement')){log('✅ New stock appears in table','ok')}else{log('⚠ Stock may not have appeared in table (check if duplicate key)','warn')}
+      }else{log('❌ Save Stock button not found','err')}
+    }else{log('❌ Form fields not found','err')}
+    // Close modal if still open
+    const closeBtn=d.querySelector('#modal-content button');
+    if(closeBtn){closeBtn.click();await sleep(500)}
+  }else{log('❌ Add Stock button not found','err')}
+
+  // 5. LOGOUT & TEST OTHER ROLES
+  log('\n══ TESTING OTHER ROLES ══','info');
+  const logoutBtn=Array.from(d.querySelectorAll('button')).find(b=>b.textContent.includes('Sign Out'));
+  if(logoutBtn){logoutBtn.click();await sleep(1000)}else{log('❌ Sign Out not found','err');w.localStorage.clear();w.location.reload();await sleep(2000)}
+
+  const roles=[
+    ['owner@canaan.co.ke','owner123','Owner'],
+    ['ceo@canaan.co.ke','ceo123','CEO'],
+    ['am@canaan.co.ke','am123','Asset Mgr'],
+    ['pm1@canaan.co.ke','pm123','PM1'],
+    ['eng@canaan.co.ke','eng123','Engineer'],
+    ['sk.local@canaan.co.ke','sk123','Storekeeper'],
+    ['sm@canaan.co.ke','sm123','Store Mgr'],
+    ['finance@canaan.co.ke','finance123','Finance'],
+  ];
+
+  for(const[email,pw,name]of roles){
+    d.querySelector('#login-email').value=email;
+    d.querySelector('#login-password').value=pw;
+    d.querySelector('#login-btn').click();
+    await sleep(3000);
+    const sd=d.querySelector('#sidebar');
+    if(sd){log(`✅ ${name} (${email}) - nav: ${Array.from(d.querySelectorAll('[data-nav-item][id^="nav-"]')).filter(e=>e.offsetParent).map(e=>e.textContent.trim().split('\n')[0]).join(', ')}`,'ok')
+      Array.from(d.querySelectorAll('button')).find(b=>b.textContent.includes('Sign Out'))?.click();
+      await sleep(1000);
+    }else{log(`❌ ${name} login failed`,'err');w.localStorage.clear();w.location.reload();await sleep(2000)
+      // retry
+      d.querySelector('#login-email').value=email;d.querySelector('#login-password').value=pw;d.querySelector('#login-btn').click();await sleep(3000);
+      if(d.querySelector('#sidebar')){log(`✅ ${name} login OK (retry)`,'ok')}else{log(`❌ ${name} login failed (retry)`,`err`)}
+    }
+  }
+
+  log('\n🏁 Done!','info');
+  btn.disabled=false;btn.textContent='▶ Re-Run';
+}
+</script>
+</body>
+</html>
