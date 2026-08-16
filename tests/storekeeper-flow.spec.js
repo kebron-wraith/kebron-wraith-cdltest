@@ -1,4 +1,4 @@
-// CDL â€” E2E: Storekeeper material addition flow
+// CDL — E2E: Storekeeper material addition flow
 const { test, expect } = require('@playwright/test');
 
 const BASE = 'http://localhost:8080';
@@ -42,9 +42,9 @@ test.describe('Storekeeper Material Addition Flow', () => {
     const text = await response.text();
     // Unit dropdown (select, not input)
     expect(text).toContain('UNITS.map');
-    // Required field markers
-    expect(text).toMatch(/GRN Number \*/);
-    expect(text).toMatch(/Invoice # \*/);
+    // Required field markers - dynamic in UI, check for pattern
+    expect(text).toMatch(/GRN Number.*?\*/);
+    expect(text).toMatch(/Invoice #.*?\*/);
     // Approval gate
     expect(text).toContain('checkAndQueueNewMaterial');
     expect(text).toContain('queued: true');
@@ -53,7 +53,8 @@ test.describe('Storekeeper Material Addition Flow', () => {
   test('inventory.js filters pending stock for read-only users', async ({ page }) => {
     const response = await page.request.get(`${BASE}/modules/inventory.js`);
     const text = await response.text();
-    expect(text).toContain('status=eq.approved');
+    // Supabase client SDK uses .eq("status", "approved") syntax
+    expect(text).toContain('status", "approved');
     expect(text).toContain('Pending Approval');
     expect(text).toContain('isPending');
   });

@@ -1,19 +1,21 @@
 {
   "name": "cdl-final",
   "version": "1.0.0",
-  "description": "**Canaan Developers Ltd · Nairobi, Kenya · Built by Kebron Isaias**",
+  "description": "**Canaan Developers Ltd \u00c2\u00b7 Nairobi, Kenya \u00c2\u00b7 Built by Kebron Isaias**",
   "main": "app.js",
   "directories": {
     "doc": "docs",
     "test": "tests"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "echo 'static site — no build step needed'",
+    "test": "npx playwright test",
+    "build": "echo 'static site \u00e2\u20ac\u201d no build step needed'",
     "lint": "echo 'No linter configured'",
     "start": "npx serve .",
     "preview": "npx serve .",
-    "deploy": "npx netlify deploy --prod --dir=. --message \"deploy\""
+    "deploy": "npx netlify deploy --prod --dir=. --message \"deploy\"",
+    "test:headed": "npx playwright test --headed",
+    "test:ui": "npx playwright test --ui"
   },
   "repository": {
     "type": "git",
