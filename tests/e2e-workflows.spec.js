@@ -4,7 +4,7 @@
 
 const { test, expect } = require('@playwright/test');
 
-const LIVE_URL = 'https://cdl-testt--wraith-w.netlify.app';
+const LIVE_URL = 'https://cdl-testt.netlify.app';
 
 // Production test credentials - use test accounts
 const CREDENTIALS = {
