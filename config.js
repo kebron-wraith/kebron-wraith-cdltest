@@ -1,11 +1,12 @@
 // CDL Site Management — config.js
 // Central configuration and Supabase client export
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/+esm';
 
 // Environment variables (set in Netlify / .env)
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://your-project.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key';
+// Access via fetch in browser or from Netlify functions
+const SUPABASE_URL = 'https://your-project.supabase.co';
+const SUPABASE_ANON_KEY = 'your-anon-key';
 
 // Export Supabase client for all modules to use
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
