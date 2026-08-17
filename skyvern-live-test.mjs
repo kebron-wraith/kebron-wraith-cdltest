@@ -2,7 +2,7 @@ import { test, expect, chromium, devices } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 
-const APP_URL = 'https://wraith-w.netlify.app';
+const APP_URL = 'https://cdl-testt--wraith-w.netlify.app';
 const RESULTS_DIR = path.join(process.cwd(), 'test-results', 'live-test');
 const SCREENSHOT_DIR = path.join(RESULTS_DIR, 'screenshots');
 

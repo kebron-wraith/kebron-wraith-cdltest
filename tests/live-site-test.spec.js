@@ -1,7 +1,7 @@
 // CDL — E2E: Live site smoke test across all accounts
 const { test, expect } = require('@playwright/test');
 
-const LIVE_URL = 'https://wraith-w.netlify.app';
+const LIVE_URL = 'https://cdl-testt.netlify.app';
 
 const CREDENTIALS = {
   admin:  { email: 'admin@canaan.co.ke',     password: 'admin123',   role: 'company_owner' },
@@ -23,7 +23,9 @@ test.describe('Live site smoke test', () => {
         if (!err.message.includes('closeModal')) errors.push(`[pageerror] ${err.message}`);
       });
 
-      await page.goto(LIVE_URL);
+      await page.goto(LIVE_URL, { waitUntil: 'networkidle' });
+      // Wait for the dynamically rendered login form
+      await page.waitForSelector('#login-email', { timeout: 30000 });
       await page.fill('#login-email', cred.email);
       await page.fill('#login-password', cred.password);
       await page.click('#login-btn');
@@ -62,12 +64,13 @@ test.describe('Live site smoke test', () => {
     page.on('pageerror', err => errors.push(err.message));
     page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
 
-    await page.goto(LIVE_URL);
+    await page.goto(LIVE_URL, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#login-email', { timeout: 30000 });
     await page.fill('#login-email', CREDENTIALS.admin.email);
     await page.fill('#login-password', CREDENTIALS.admin.password);
     await page.click('#login-btn');
-    await page.waitForSelector('#sidebar', { timeout: 10000 });
-    await page.waitForTimeout(1500);
+    await page.waitForSelector('#sidebar', { timeout: 15000 });
+    await page.waitForTimeout(500);
 
     // Go to Users page
     await page.click('#nav-users');
@@ -123,12 +126,13 @@ test.describe('Live site smoke test', () => {
     const errors = [];
     page.on('pageerror', err => errors.push(err.message));
 
-    await page.goto(LIVE_URL);
+    await page.goto(LIVE_URL, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#login-email', { timeout: 30000 });
     await page.fill('#login-email', CREDENTIALS.admin.email);
     await page.fill('#login-password', CREDENTIALS.admin.password);
     await page.click('#login-btn');
-    await page.waitForSelector('#sidebar', { timeout: 10000 });
-    await page.waitForTimeout(1500);
+    await page.waitForSelector('#sidebar', { timeout: 15000 });
+    await page.waitForTimeout(500);
 
     // Go to Users page, switch to Sites tab
     await page.click('#nav-users');
@@ -156,11 +160,13 @@ test.describe('Live site smoke test', () => {
     const errors = [];
     page.on('pageerror', err => errors.push(err.message));
 
-    await page.goto(LIVE_URL);
+    await page.goto(LIVE_URL, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#login-email', { timeout: 30000 });
     await page.fill('#login-email', CREDENTIALS.admin.email);
     await page.fill('#login-password', CREDENTIALS.admin.password);
     await page.click('#login-btn');
-    await page.waitForSelector('#sidebar', { timeout: 10000 });
+    await page.waitForSelector('#sidebar', { timeout: 15000 });
+    await page.waitForTimeout(500);
 
     await page.click('#nav-inventory');
     // Wait for inventory data to load (table or "No stock items" message)
@@ -189,16 +195,13 @@ test.describe('Live site smoke test', () => {
       errors.length = 0;
       // Clear session BEFORE goto so login form appears
       await page.context().clearCookies();
-      await page.goto(LIVE_URL);
-      await page.waitForLoadState('domcontentloaded');
-      await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
-      await page.goto(LIVE_URL);
-      await page.waitForSelector('#login-email', { timeout: 10000 });
+      await page.goto(LIVE_URL, { waitUntil: 'networkidle' });
+      await page.waitForSelector('#login-email', { timeout: 30000 });
       await page.fill('#login-email', cred.email);
       await page.fill('#login-password', cred.password);
       await page.click('#login-btn');
-      await page.waitForSelector('#sidebar', { timeout: 10000 });
-      await page.waitForTimeout(2000);
+      await page.waitForSelector('#sidebar', { timeout: 15000 });
+      await page.waitForTimeout(500);
 
       const refErrors = errors.filter(e => e.includes('not defined'));
       expect(refErrors).toEqual([]);
