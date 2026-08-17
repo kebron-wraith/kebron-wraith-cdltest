@@ -5,8 +5,9 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 // Environment variables (set in Netlify / .env)
 // Access via fetch in browser or from Netlify functions
-const SUPABASE_URL = 'https://your-project.supabase.co';
-const SUPABASE_ANON_KEY = 'your-anon-key';
+// For browser-based apps, Supabase env vars are injected at build time
+const SUPABASE_URL = 'https://dljvplrbjogncwrpmfsj.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsanZwbHJiam9nbmN3cnBtZnNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MjAxMzIsImV4cCI6MjA5NDA5NjEzMn0.GmsMNKlRos6ZChy143_YrSlDB477RHPxkRqA0wGJB1E';
 
 // Export Supabase client for all modules to use
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
