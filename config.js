@@ -6,8 +6,12 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 // Environment variables (set in Netlify / .env)
 // Access via fetch in browser or from Netlify functions
 // For browser-based apps, Supabase env vars are injected at build time
-const SUPABASE_URL = 'https://dljvplrbjogncwrpmfsj.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsanZwbHJiam9nbmN3cnBtZnNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MjAxMzIsImV4cCI6MjA5NDA5NjEzMn0.GmsMNKlRos6ZChy143_YrSlDB477RHPxkRqA0wGJB1E';
+export const SUPABASE_URL = 'https://dljvplrbjogncwrpmfsj.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsdmpwbHJiam9nbmN3cnBtZnNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MjAxMzIsImV4cCI6MjA5NDA5NjEzMn0.GmsMNKlRos6ZChy143_YrSlDB477RHPxkRqA0wGJB1E';
+
+// App metadata
+export const APP_CLIENT = 'Canaan Developers Ltd · Nairobi, Kenya';
+export const LOGO_URL = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODQiIGhlaWdodD0iODQiIHZpZXdCb3g9IjAgMCA4NCA4NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyLjMgMEE0MCA0MCAwIDI2IDMaY2xhc3M9ImxvZ28tZmxvYXQiIHN0eWxlPSJmb250LWZhbWlseTogJ2FyaWFsLTYyJyIgZm9udC1zaXplOiA0cHg7IGZpbGw6ICdyZWFkbWluJz48L3BhdGg+Cjwvc3ZnPgo=';
 
 // Export Supabase client for all modules to use
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
