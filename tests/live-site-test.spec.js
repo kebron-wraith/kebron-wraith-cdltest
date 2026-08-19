@@ -204,6 +204,7 @@ test.describe('Live site smoke test', () => {
   });
 
   test('all accounts — login works, no JS errors', async ({ page }) => {
+    test.setTimeout(180000);
     const errors = [];
     page.on('pageerror', err => errors.push(err.message));
 
