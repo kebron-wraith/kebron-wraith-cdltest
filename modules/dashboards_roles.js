@@ -60,7 +60,7 @@ async function renderStoreManager(container, user, role) {
   if (!container) return;
   let stock = [], grns = [];
   try {
-    [stockRes, grnsRes] = await Promise.all([
+    let [stockRes, grnsRes] = await Promise.all([
       supabase.from("stock").select("site_id,quantity,unit_price,material_name,unit").limit(500),
       supabase.from("grns").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(30),
     ]);

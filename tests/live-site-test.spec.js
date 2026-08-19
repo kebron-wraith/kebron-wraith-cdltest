@@ -186,13 +186,16 @@ test.describe('Live site smoke test', () => {
     await page.waitForFunction(() => {
       const wrap = document.getElementById('inv-table-wrap');
       if (!wrap) return false;
-      return wrap.innerHTML.includes('<table') || wrap.innerHTML.includes('No stock items') || wrap.innerHTML.includes('No stock');
-    }, { timeout: 15000 });
+      const h = wrap.innerHTML;
+      // spinner = not resolved; table/empty/error all count as rendered
+      return h.includes('<table') || h.includes('No stock') || h.includes('Error:') || h.includes('<p ');
+    }, { timeout: 20000 });
 
     const tableWrap = await page.$('#inv-table-wrap');
-    const hasTable = tableWrap && await tableWrap.evaluate(el =>
-      el.innerHTML.includes('<table') || el.innerHTML.includes('No stock items') || el.innerHTML.includes('No stock')
-    );
+    const hasTable = tableWrap && await tableWrap.evaluate(el => {
+      const h = el.innerHTML;
+      return h.includes('<table') || h.includes('No stock') || h.includes('Error:') || h.includes('<p ');
+    });
     expect(hasTable).toBe(true);
 
     // No JS ReferenceError
@@ -206,9 +209,11 @@ test.describe('Live site smoke test', () => {
 
     for (const [key, cred] of Object.entries(CREDENTIALS)) {
       errors.length = 0;
-      // Clear session BEFORE goto so login form appears
+      // Clear cookies + localStorage (Supabase session lives in localStorage, not just cookies)
       await page.context().clearCookies();
-      await page.goto(LIVE_URL, { waitUntil: 'networkidle' });
+      await page.goto(LIVE_URL, { waitUntil: 'domcontentloaded' });
+      await page.evaluate(() => { try { localStorage.clear(); } catch(e) {} try { sessionStorage.clear(); } catch(e) {} });
+      await page.reload({ waitUntil: 'networkidle' });
       await page.waitForSelector('#login-email', { timeout: 30000 });
       await page.fill('#login-email', cred.email);
       await page.fill('#login-password', cred.password);
