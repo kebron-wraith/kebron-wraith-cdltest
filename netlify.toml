@@ -1,6 +1,6 @@
 [build]
   publish = "."
-  command = "npm run build"
+  command = "echo 'static site — no build step needed'"
 
 [functions]
   directory = ".netlify/functions"
@@ -10,6 +10,13 @@
   to = "/.netlify/functions/rest-v1"
   status = 200
   force = true
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
 
 [functions.backup_daily]
   schedule = "0 0 * * *"

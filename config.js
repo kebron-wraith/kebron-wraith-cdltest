@@ -7,7 +7,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 // Access via fetch in browser or from Netlify functions
 // For browser-based apps, Supabase env vars are injected at build time
 export const SUPABASE_URL = 'https://dljvplrbjogncwrpmfsj.supabase.co';
-export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsdmpwbHJiam9nbmN3cnBtZnNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MjAxMzIsImV4cCI6MjA5NDA5NjEzMn0.GmsMNKlRos6ZChy143_YrSlDB477RHPxkRqA0wGJB1E';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsanZwbHJiam9nbmN3cnBtZnNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MjAxMzIsImV4cCI6MjA5NDA5NjEzMn0.GmsMNKlRos6ZChy143_YrSlDB477RHPxkRqA0wGJB1E';
 
 // App metadata
 export const APP_CLIENT = 'Canaan Developers Ltd · Nairobi, Kenya';
@@ -51,3 +51,8 @@ export const AI_MSG_LIMITS = {
   supervisor: 5,
   site_overseer: 5,
 };
+
+// AI config (Gemini only - injected at build time from config-env.js)
+export const GEMINI_KEYS = ["AIzaSyAICinEgwTKHLQqVV8K4bEVhKOWCWIB348"];
+export const GEMINI_MODEL_PRIMARY = "gemini-3.6-flash";
+export const GEMINI_MODEL_FALLBACK = "gemini-3.6-flash";
