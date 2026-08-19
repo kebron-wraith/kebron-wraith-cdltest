@@ -292,11 +292,3 @@ function openRequestModal(user, siteFilter) {
     }
   };
 }
-  const select = document.getElementById("rq-material");
-  const newMaterialInput = document.getElementById("rq-material-new");
-  if (select.value === "__NEW__") {
-    newMaterialInput.style.display = "block";
-  } else {
-    newMaterialInput.style.display = "none";
-  }
-};
