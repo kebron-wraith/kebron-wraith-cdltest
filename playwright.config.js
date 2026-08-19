@@ -7,7 +7,7 @@ module.exports = defineConfig({
   retries: 1,
   reporter: [['list'], ['html', { outputFolder: 'tests-report' }]],
   use: {
-    headless: false,
+    headless: true,
     viewport: { width: 1400, height: 900 },
     screenshot: 'on',
     trace: 'on-first-retry',

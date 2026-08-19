@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-const LIVE_URL = 'https://wraith-w.netlify.app';
+const LIVE_URL = 'https://cdllivetest.netlify.app';
 
 const CREDENTIALS = {
   am:     { email: 'am@canaan.co.ke',        password: 'am123',      canvas: 'am-chart',      role: 'AM'      },

@@ -1,13 +1,26 @@
 // CDL — E2E: Live site smoke test across all accounts
 const { test, expect } = require('@playwright/test');
 
-const LIVE_URL = 'https://cdl-testt.netlify.app';
+const LIVE_URL = 'https://cdllivetest.netlify.app';
 
 const CREDENTIALS = {
-  admin:  { email: 'admin@canaan.co.ke',     password: 'admin123',   role: 'company_owner' },
-  ceo:    { email: 'ceo@canaan.co.ke',        password: 'ceo123',     role: 'ceo'           },
-  finance:{ email: 'finance@canaan.co.ke',   password: 'finance123', role: 'finance'       },
-  am:     { email: 'am@canaan.co.ke',         password: 'am123',      role: 'storekeeper'   },
+  admin:        { email: 'admin@canaan.co.ke',       password: 'admin123',    role: 'admin' },
+  company_owner:{ email: 'owner@canaan.co.ke',       password: 'owner123',    role: 'company_owner' },
+  ceo:          { email: 'ceo@canaan.co.ke',         password: 'ceo123',      role: 'ceo' },
+  asset_manager:{ email: 'am@canaan.co.ke',          password: 'am123',       role: 'asset_manager' },
+  finance:      { email: 'finance@canaan.co.ke',     password: 'finance123',  role: 'finance' },
+  pm1:          { email: 'pm1@canaan.co.ke',         password: 'pm1123',      role: 'project_manager' },
+  pm2:          { email: 'pm2@canaan.co.ke',         password: 'pm2123',      role: 'project_manager' },
+  engineer:     { email: 'eng@canaan.co.ke',         password: 'eng123',      role: 'engineer' },
+  store_manager:{ email: 'sm@canaan.co.ke',          password: 'sm123',       role: 'store_manager' },
+  sk_local:     { email: 'sk.local@canaan.co.ke',    password: 'sklocal123',  role: 'storekeeper_local' },
+  sk_import:    { email: 'sk.import@canaan.co.ke',   password: 'skimport123', role: 'storekeeper_import' },
+  sk_scaff:     { email: 'sk.scaff@canaan.co.ke',    password: 'skscaff123',  role: 'storekeeper_scaffolding' },
+  procurement:  { email: 'po@canaan.co.ke',          password: 'po123',       role: 'procurement_officer' },
+  transfer:     { email: 'to@canaan.co.ke',          password: 'to123',       role: 'transfer_officer' },
+  data_holder:  { email: 'dh@canaan.co.ke',          password: 'dh123',       role: 'data_holder' },
+  site_overseer:{ email: 'so@canaan.co.ke',          password: 'so123',       role: 'site_overseer' },
+  supervisor:   { email: 'sup@canaan.co.ke',         password: 'sup123',      role: 'supervisor' }
 };
 
 test.describe('Live site smoke test', () => {

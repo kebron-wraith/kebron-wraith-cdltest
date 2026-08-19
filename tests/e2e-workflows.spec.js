@@ -1,10 +1,10 @@
 // CDL ERP — End-to-End Workflow Tests
-// Live site: https://cdl-testt.netlify.app
+// Live site: https://cdllivetest.netlify.app
 // Tests actual workflow completion with real data
 
 const { test, expect } = require('@playwright/test');
 
-const LIVE_URL = 'https://cdl-testt.netlify.app';
+const LIVE_URL = 'https://cdllivetest.netlify.app';
 
 // Production test credentials - use test accounts
 const CREDENTIALS = {
