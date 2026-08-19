@@ -26,9 +26,17 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 export const APP_NAME = 'CDL Site Management';
 export const APP_VERSION = 'v11.0';
 export const SITES = [
-  { id: 1, name: 'Site A - Nairobi' },
-  { id: 2, name: 'Site B - Mombasa' },
-  { id: 3, name: 'Site C - Kisumu' },
+  { id: 1, name: 'Aura Peponi', type: 'residential' },
+  { id: 2, name: 'Aura Riverside', type: 'residential' },
+  { id: 3, name: 'Miotoni (Karen)', type: 'residential' },
+  { id: 4, name: 'SBC', type: 'residential' },
+  { id: 5, name: 'EL-Signature', type: 'residential' },
+  { id: 6, name: 'OKAS', type: 'residential' },
+  { id: 7, name: 'Altura (Upper Hill)', type: 'commercial' },
+  { id: 8, name: 'Whispering Oaks (Karen)', type: 'residential' },
+  { id: 9, name: 'Enchanting Oaks', type: 'residential' },
+  { id: 10, name: 'Nyari', type: 'residential' },
+  { id: 11, name: 'Central Store (GRS/Mlolongo)', type: 'warehouse' }
 ];
 
 // AI message limits per role
