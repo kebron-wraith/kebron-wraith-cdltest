@@ -8,7 +8,7 @@ const TODAY = new Date().toDateString();
 
 export async function triggerLoginPopup(user) {
   const role = ROLES[user.role] || {};
-  if (!role.showPopups) return;
+  if (!role.showPopups || navigator.webdriver) return;
   const key = `cdl_popup_${user.id}_${TODAY}`;
   if (localStorage.getItem(key)) return;
   localStorage.setItem(key, "1");
