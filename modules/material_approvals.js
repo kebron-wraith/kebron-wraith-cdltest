@@ -183,7 +183,7 @@ async function loadPendingMaterials(user) {
           ).join("")}
         </tr></thead>
         <tbody>${arr.map(w => {
-          const escName = w.material_name.replace(/'/g, "\\'").replace(/"/g, """);
+          const escName = w.material_name.replace(/'/g, "\\'").replace(/"/g, '\\"');
           const siteName = w.site_id ? `Site ${w.site_id}` : "All Sites";
           let bg, col;
           if (w.storekeeper_type === "local") { bg = "rgba(46,160,67,0.15)"; col = "var(--accent-green)"; }
@@ -197,7 +197,7 @@ async function loadPendingMaterials(user) {
             <td style="padding:10px 8px;">
               <span style="padding:2px 8px;border-radius:10px;font-size:11px;
                 background:${bg}
-                color:${col}>
+                color:${col};">
                 ${w.storekeeper_type}
               </span>
             </td>

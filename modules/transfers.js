@@ -1,5 +1,5 @@
 // CDL — modules/transfers.js
-import { supabase } from "../config.js";
+import { supabase, SITES } from "../config.js";
 import { logAudit } from "./audit_core.js";
 import { ROLES } from "./roles.js";
 import { showToast, showModal, closeModal } from "../app.js";

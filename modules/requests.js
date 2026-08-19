@@ -16,6 +16,7 @@ export async function renderRequests(container, user) {
   container.innerHTML = `<div style="margin-bottom:24px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;"><div><h1 style="font-size:24px;font-weight:700;color:var(--text-100);">Material Requests</h1><p style="color:var(--text-200);font-size:13px;margin-top:4px;">Request, approve, issue, collect and return material</p></div>${canCreate?`<button class="btn btn-gold" onclick="window._reqOpenNew()">+ New Request</button>`:""}</div><div style="display:flex;gap:4px;margin-bottom:20px;flex-wrap:wrap;">${["Pending","PM Approved","Issued","Collected","Completed","Returned","Expired"].map((t,i)=>{const key=t.toLowerCase().replace(" ","_");return `<button onclick="window._reqLoad('${key}')" id="req-tab-${key}" style="padding:7px 16px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:500;${i===0?"background:var(--gold);color:var(--bg-900);":"background:var(--bg-600);color:var(--text-200);"}">${t}<span id="req-count-${key}" style="margin-left:4px;font-size:10px;opacity:0.7;"></span></button>`;}).join("")}</div><div id="req-list"><div class="spinner" style="margin:60px auto;"></div></div>`;
   window._reqLoad = (status) => { ["pending","pm_approved","issued","collected","completed","returned","expired"].forEach(s=>{const b=document.getElementById(`req-tab-${s}`);if(b){b.style.background=s===status?"var(--gold)":"var(--bg-600)";b.style.color=s===status?"var(--bg-900)":"var(--text-200)";}}); fetchRequests(user,siteFilter,status,canApprove,canIssue); };
   window._reqOpenNew = () => openRequestModal(user,siteFilter);
+  window._submitReq = () => submitRequest(user,siteFilter);
   fetchRequests(user,siteFilter,"pending",canApprove,canIssue);
 }
 
@@ -144,7 +145,8 @@ function openReturnModal(id,materialName,origQty,unit) {
   }catch(err){showToast(`Error: ${err.message}`,"error");}};
 }
 
-async function openRequestModal(user,siteFilter) {
+async function submitRequest(user,siteFilter) {
+
   const siteId = parseInt(document.getElementById("rq-site").value);
   let material = document.getElementById("rq-material").value.trim();
   const qty = parseFloat(document.getElementById("rq-qty").value);

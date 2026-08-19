@@ -5,6 +5,7 @@
 // ============================================================
 
 import { supabase, SITES } from "../config.js";
+import { callAIWithImages } from "./ai_engine.js";
 import { logAudit } from "./audit_core.js";
 import { showToast, showModal, closeModal } from "../app.js";
 import { findMaterial, UNITS } from "../data.js";
