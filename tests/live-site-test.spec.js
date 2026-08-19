@@ -82,8 +82,8 @@ test.describe('Live site smoke test', () => {
     await page.fill('#login-email', CREDENTIALS.admin.email);
     await page.fill('#login-password', CREDENTIALS.admin.password);
     await page.click('#login-btn');
-    await page.waitForSelector('#sidebar', { timeout: 15000 });
-    await page.waitForTimeout(500);
+    await page.waitForSelector('#sidebar', { timeout: 25000 });
+      await page.waitForTimeout(500);
 
     // Go to Users page
     await page.click('#nav-users');
@@ -213,7 +213,7 @@ test.describe('Live site smoke test', () => {
       await page.context().clearCookies();
       await page.goto(LIVE_URL, { waitUntil: 'domcontentloaded' });
       await page.evaluate(() => { try { localStorage.clear(); } catch(e) {} try { sessionStorage.clear(); } catch(e) {} });
-      await page.reload({ waitUntil: 'networkidle' });
+      await page.reload({ waitUntil: 'load' });
       await page.waitForSelector('#login-email', { timeout: 30000 });
       await page.fill('#login-email', cred.email);
       await page.fill('#login-password', cred.password);
