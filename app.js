@@ -229,6 +229,8 @@ function buildNav(user, role) {
 
 async function navigate(route) {
   if (!currentUser) return;
+  // Always dismiss any open modal before navigating to a new section
+  closeModal();
   if (!checkAccess(route, currentUser)) { showToast("Access denied for your role", "error"); return; }
   document.querySelectorAll("[id^='nav-']").forEach(b => { b.classList.remove("active"); b.style.background = "transparent"; b.style.color = "var(--text-200)"; });
   const activeBtn = document.getElementById(`nav-${route}`);

@@ -254,12 +254,12 @@ window._scGenerateReport = async (closeoutId) => {
       <div><strong>Completed Requests:</strong> ${reportData.finalRequests?.length || 0}</div>
       <div><strong>Completed Transfers:</strong> ${reportData.finalTransfers?.length || 0}</div>
       <div style="margin-top:16px;display:flex;gap:8px;">
-        <button onclick="window._scSaveReport('${closeoutId}', ${JSON.stringify(reportData)})" class="btn btn-gold">💾 Save Report</button>
+        <button onclick="window._scSaveReport('${closeoutId}')" class="btn btn-gold">💾 Save Report</button>
         <button onclick="window._closeModal()" class="btn btn-ghost">Close</button>
       </div>
     </div>`);
 
-    window._scSaveReport = async (id, reportData) => {
+    window._scSaveReport = async (id) => {
       try {
         const { error } = await supabase
           .from('site_closeouts')

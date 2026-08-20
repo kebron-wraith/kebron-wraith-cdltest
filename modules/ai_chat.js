@@ -96,7 +96,7 @@ async function sendMessage() {
   appendMsg("user", text);
   const thinking = appendMsg("ai", "✦ Thinking…", true);
   _msgCount++;
-  await updateMsgCountInSupabase(user, _msgCount);
+  await updateMsgCountInSupabase(_user, _msgCount);
   const systemPrompt = getSystemPrompt(_user);
   const history = _history.slice(-6).map(m => `${m.role === "user" ? "User" : "CDL AI"}: ${m.content}`).join("\n");
   const fullPrompt = history ? `${history}\nUser: ${text}` : text;

@@ -232,7 +232,7 @@ function openRequestModal(user, siteFilter) {
     <input id="rq-purpose" type="text" placeholder="e.g. Column 3 formwork, Phase 2" style="width:100%;background:var(--bg-700);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text-100);">
   </div>
   <div style="display:flex;gap:12px;">
-    <button onclick="window._reqSubmitNew(${JSON.stringify(user.id)})" class="btn btn-gold" style="flex:1;">Submit Request</button>
+    <button onclick="window._reqSubmitNew('${user.id}')" class="btn btn-gold" style="flex:1;">Submit Request</button>
     <button onclick="window._closeModal()" class="btn btn-ghost">Cancel</button>
   </div>
 </div>`);
